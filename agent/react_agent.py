@@ -192,71 +192,81 @@ def generate_coffee_gap_plot(branch_names: list[str], coffee_ratios: list[float]
 
 ALL_TOOLS = [sql_engine, model_inference, growth_strategy, generate_demand_confidence_plot, generate_combo_lift_plot, generate_coffee_gap_plot]
 
-
-class AgentState(TypedDict):
-    messages: Sequence[BaseMessage]
-
-
 from langchain_core.messages import SystemMessage
+from langgraph.prebuilt import create_react_agent
+
+
+def _sanitize_messages_for_gemini(messages):
+    """Patch empty AIMessage content values before they reach the Gemini SDK.
+    
+    Gemini's protobuf converter rejects AIMessages with content='' or content=[].
+    This occurs internally when LangGraph feeds tool-call-only messages back.
+    """
+    sanitized = []
+    for m in messages:
+        if isinstance(m, AIMessage):
+            content = m.content
+            if not content or (isinstance(content, list) and len(content) == 0):
+                m = m.copy(update={"content": " "})
+        sanitized.append(m)
+    return sanitized
+
 
 def build_react_agent(llm):
-    """Build a LangGraph ReAct agent with the three operational tools."""
+    """Build a LangGraph ReAct agent with operational tools and Gemini-safe message handling."""
     
-    # The essential System Prompt forcing the AI into the Level 2 Agentic Copilot role
-    sys_msg = SystemMessage(content=(
+    sys_prompt = (
         "You are an elite AI Copilot assisting the human Chief of Operations for Conut bakery. "
         "You do NOT make final decisions; you provide rigorous, tool-backed strategic recommendations.\n\n"
         "RULES:\n"
         "1. Always Use Tools: Never guess numbers. If asked about sales, staffing, combos, or expansion, you MUST execute the relevant API tools.\n"
-        "2. Chain of Thought: If a user asks a complex question, use multiple tools in sequence before answering (e.g., check demand then calculate staff).\n"
-        "3. Explain the Risk: You must always report the mathematical uncertainty or confidence bounds returned by the models. Never present a prediction as absolute fact.\n"
-        "4. Actionable Advice: End every response with a clear, data-driven recommendation for the human executive to approve. Format your output using Markdown (bolding, lists, and headers).\n"
-        "5. Plotting & BI Visuals: When generating plots or visualizations: If the user asks for a chart, graph, or visual evaluation, you must call the appropriate plotting tool (e.g., generate_demand_confidence_plot, generate_combo_lift_plot, generate_coffee_gap_plot).\n"
-        "   The tool will return a markdown_image string (e.g., ![Plot](http://...)). You MUST include this exact markdown string in your final chat response so the image renders for the user. Do not modify the URL.\n"
-    ))
+        "2. Chain of Thought: If a user asks a complex question, use multiple tools in sequence before answering.\n"
+        "3. Explain the Risk: Always report the mathematical uncertainty or confidence bounds returned by the models.\n"
+        "4. Actionable Advice: End every response with a clear, data-driven recommendation for the human executive to approve. Use Markdown formatting.\n"
+        "5. Plotting & BI Visuals: When the user asks for a chart or graph, call the appropriate plotting tool. Include the returned markdown_image string in your response.\n"
+    )
     
-    llm_with_tools = llm.bind_tools(ALL_TOOLS)
-
-    def should_continue(state: AgentState):
-        last_message = state["messages"][-1]
-        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-            return "tools"
-        return END
-
-    def call_model(state: AgentState):
-        messages = [sys_msg] + list(state["messages"])
+    # Monkey-patch the LLM's _generate to sanitize messages before hitting the Gemini SDK
+    original_generate = llm._generate
+    
+    def patched_generate(messages, stop=None, run_manager=None, **kwargs):
+        messages = _sanitize_messages_for_gemini(messages)
+        return original_generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+    
+    llm._generate = patched_generate
+    
+    # Also patch async _agenerate if it exists
+    if hasattr(llm, '_agenerate'):
+        original_agenerate = llm._agenerate
         
-        # GEMINI STRICT VALIDATION PATCH
-        # The Google GenAI SDK strictly enforces that all AIMessages have non-empty 'content' strings.
-        # When Gemini generates a tool_call, LangChain stores an AIMessage with content="".
-        # When LangGraph feeds this back on the next turn alongside the ToolMessage observation, Gemini crashes.
-        # We must intercept and patch any empty AIMessage contents here.
-        patched_messages = []
-        for m in messages:
-            if isinstance(m, AIMessage):
-                if not m.content:
-                    # Create a new AIMessage copying everything but forcing content to a single space
-                    m = AIMessage(content=" ", tool_calls=m.tool_calls, additional_kwargs=m.additional_kwargs)
-            patched_messages.append(m)
-            
-        try:
-            response = llm_with_tools.invoke(patched_messages)
-            return {"messages": [response]}
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"LLM INVOKE ERROR: {e}")
-            raise
-
-    tool_node = ToolNode(ALL_TOOLS)
-
-    graph = StateGraph(AgentState)
-    graph.add_node("agent", call_model)
-    graph.add_node("tools", tool_node)
-    graph.set_entry_point("agent")
-    graph.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
-    graph.add_edge("tools", "agent")
-
-    return graph.compile()
+        async def patched_agenerate(messages, stop=None, run_manager=None, **kwargs):
+            messages = _sanitize_messages_for_gemini(messages)
+            return await original_agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
+        
+        llm._agenerate = patched_agenerate
+    
+    # Also patch _stream
+    if hasattr(llm, '_stream'):
+        original_stream = llm._stream
+        
+        def patched_stream(messages, stop=None, run_manager=None, **kwargs):
+            messages = _sanitize_messages_for_gemini(messages)
+            return original_stream(messages, stop=stop, run_manager=run_manager, **kwargs)
+        
+        llm._stream = patched_stream
+    
+    # Also patch _astream  
+    if hasattr(llm, '_astream'):
+        original_astream = llm._astream
+        
+        async def patched_astream(messages, stop=None, run_manager=None, **kwargs):
+            messages = _sanitize_messages_for_gemini(messages)
+            async for chunk in original_astream(messages, stop=stop, run_manager=run_manager, **kwargs):
+                yield chunk
+        
+        llm._astream = patched_astream
+    
+    return create_react_agent(llm, ALL_TOOLS, prompt=sys_prompt)
 
 
 # ──────────────────────────────────────────────

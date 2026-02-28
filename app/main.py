@@ -94,7 +94,6 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
-app = FastAPI(title="C.O.C.O. Agent Backend Gateway", lifespan=lifespan)
 
 # Define exact ports OpenClaw and your SvelteKit dashboard use locally
 # In production, this would be read from os.environ.get("ALLOWED_ORIGINS")
