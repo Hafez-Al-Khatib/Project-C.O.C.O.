@@ -165,15 +165,13 @@ def combo_stats():
         logging.error(f"Combo stats failed: {str(e)}")
         return {"error": "Internal server error retrieving combo stats."}
 
-
-# Demand Forecasting STUB
+# Demand Forecasting
 
 @app.post("/tools/predict_demand", response_model=DemandResponse)
 def predict_demand(req: DemandRequest):
     """
     Predict demand for a branch in a given month.
     Uses the MLFlow-tracked GPR/Bayesian model with contextual features.
-    Falls back to a stub if the forecaster is not loaded.
     """
     try:
         if demand_forecaster is not None:
@@ -182,7 +180,7 @@ def predict_demand(req: DemandRequest):
     except Exception as e:
         logging.error(f"DemandForecaster inference failed: {str(e)}")
 
-    # Stub fallback if model is not loaded or fails
+    # Fallback if model is not loaded or fails
     predicted_volume = 1250.0
     best_model_mape = 15.0
     error_margin = predicted_volume * (best_model_mape / 100)
@@ -191,11 +189,11 @@ def predict_demand(req: DemandRequest):
         predicted_volume=predicted_volume,
         confidence_interval=f"{predicted_volume - error_margin:,.0f} to {predicted_volume + error_margin:,.0f}",
         mape=best_model_mape,
-        warning="Using stub fallback. DemandForecaster model not loaded.",
+        warning="Using fallback. DemandForecaster model not loaded.",
         month=req.month,
         year=req.year,
         xai_drivers={"status": "fallback"},
-        model_type="stub_fallback",
+        model_type="fallback",
     )
 
 # Expansion Feasibility
@@ -244,7 +242,8 @@ def branch_rankings():
         return {"error": "Internal server error retrieving branch rankings."}
 
 
-# Staffing Estimation STUB - Maram and Reem to replace
+# Staffing Estimation
+
 
 @app.post("/tools/estimate_staffing", response_model=StaffingResponse)
 def estimate_staffing(req: StaffingRequest):
@@ -262,7 +261,7 @@ def estimate_staffing(req: StaffingRequest):
         return StaffingResponse(**result)
     except Exception as e:
         logging.error(f"Staffing estimation failed: {str(e)}")
-        # Fallback stub
+        # Fallback
         volume = req.predicted_volume or 1250
         return StaffingResponse(
             branch=req.branch_name,
@@ -270,7 +269,7 @@ def estimate_staffing(req: StaffingRequest):
             recommended_staff=max(1, int(volume / 200)),
             throughput_metric=200,
             xai_drivers={"demand_level": "moderate", "historical_avg": "5 staff", "error": str(e)},
-            model_type="stub - fallback triggered",
+            model_type="fallback triggered",
         )
 
 

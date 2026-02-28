@@ -58,7 +58,7 @@ class GrowthResponse(BaseModel):
     error: Optional[str] = None
 
 
-# Demand Forecast (Objective 2) - Stub for Modeling Duo
+# Demand Forecast (Objective 2)
 class DemandRequest(BaseModel):
     branch_name: str = Field(..., description="Branch to predict demand for")
     month: int = Field(..., ge=1, le=12)
@@ -74,11 +74,11 @@ class DemandResponse(BaseModel):
     month: int
     year: int
     xai_drivers: Dict[str, str] = {}
-    model_type: str = "stub"
+    model_type: str = "production"
 
 
 
-# ---- Staffing Estimation (Objective 4) - Stub for Modeling Duo ----
+# ---- Staffing Estimation (Objective 4) ----
 
 class StaffingRequest(BaseModel):
     branch_name: str = Field(..., description="Branch to estimate staffing for")
@@ -91,4 +91,4 @@ class StaffingResponse(BaseModel):
     recommended_staff: int
     throughput_metric: float = 0
     xai_drivers: Dict[str, str] = {}
-    model_type: str = "stub"
+    model_type: str = "production"
