@@ -1,9 +1,8 @@
 """
-Objective 5 — Coffee & Milkshake Growth Strategy
-=================================================
-Identifies branches struggling with coffee and milkshake sales,
-cross-references with combo data, and generates targeted
-marketing interventions.
+Objective 5 - Coffee & Milkshake Growth Strategy
+Analyzes branch performance metrics for coffee and milkshake categories,
+cross-references with top-selling item data, and packages the intelligence
+for the OpenClaw LLM Strategist to generate hyper-specific interventions.
 """
 
 import os
@@ -105,89 +104,66 @@ class GrowthStrategyAnalyzer:
         return results
 
     def _branch_strategy(self, branch):
-        """Generate strategy for a single branch."""
+        """Analyze branch data and package it for the LLM Strategist."""
         total = self.branch_totals.get(branch, 0)
         if total == 0:
             return {"branch": branch, "error": "No sales data found"}
 
         # Coffee metrics
         coffee_rev = self.branch_coffee.loc[branch, "coffee_revenue"] if branch in self.branch_coffee.index else 0
-        coffee_qty = self.branch_coffee.loc[branch, "coffee_qty"] if branch in self.branch_coffee.index else 0
         coffee_ratio = coffee_rev / total if total > 0 else 0
 
         # Shake metrics
         shake_rev = self.branch_shakes.loc[branch, "shake_revenue"] if branch in self.branch_shakes.index else 0
-        shake_qty = self.branch_shakes.loc[branch, "shake_qty"] if branch in self.branch_shakes.index else 0
         shake_ratio = shake_rev / total if total > 0 else 0
 
-        # Calculate percentile rank among branches
-        all_coffee_ratios = []
-        all_shake_ratios = []
-        for b in self.branch_totals.index:
-            bt = self.branch_totals.get(b, 0)
-            cr = self.branch_coffee.loc[b, "coffee_revenue"] / bt if (b in self.branch_coffee.index and bt > 0) else 0
-            sr = self.branch_shakes.loc[b, "shake_revenue"] / bt if (b in self.branch_shakes.index and bt > 0) else 0
-            all_coffee_ratios.append(cr)
-            all_shake_ratios.append(sr)
+        # Absolute Industry Thresholds
+        # A healthy cafe should have > 20% coffee revenue and > 10% shake revenue
+        coffee_target = 0.20
+        shake_target = 0.10
 
-        coffee_percentile = sum(1 for r in all_coffee_ratios if r <= coffee_ratio) / len(all_coffee_ratios)
-        shake_percentile = sum(1 for r in all_shake_ratios if r <= shake_ratio) / len(all_shake_ratios)
+        coffee_gap = round(coffee_target - coffee_ratio, 3)  # positive = below target
+        shake_gap = round(shake_target - shake_ratio, 3)
 
-        # Generate interventions
-        interventions = []
+        # Rank within franchise for context (simple rank, not percentile)
+        all_coffee_ratios = {
+            b: (self.branch_coffee.loc[b, "coffee_revenue"] / self.branch_totals.get(b, 1))
+            if b in self.branch_coffee.index else 0
+            for b in self.branch_totals.index
+        }
+        coffee_rank = sorted(all_coffee_ratios, key=all_coffee_ratios.get).index(branch) + 1
+        n_branches = len(self.branch_totals.index)
 
-        if coffee_percentile <= 0.25:
-            interventions.append({
-                "category": "Coffee",
-                "severity": "HIGH",
-                "finding": f"Coffee contributes only {coffee_ratio*100:.1f}% of revenue — bottom quartile among branches.",
-                "action": f"Implement a morning coffee combo bundle. Target pastry buyers who currently skip coffee.",
-            })
-        elif coffee_percentile <= 0.50:
-            interventions.append({
-                "category": "Coffee",
-                "severity": "MEDIUM",
-                "finding": f"Coffee at {coffee_ratio*100:.1f}% of revenue — below median.",
-                "action": "Introduce loyalty stamps for coffee purchases. Cross-promote with chimney cake combos.",
-            })
-
-        if shake_percentile <= 0.25:
-            interventions.append({
-                "category": "Milkshakes",
-                "severity": "HIGH",
-                "finding": f"Milkshakes contribute only {shake_ratio*100:.1f}% of revenue — bottom quartile.",
-                "action": "Launch seasonal milkshake flavors. Bundle with ice cream bowl at discounted price.",
-            })
-        elif shake_percentile <= 0.50:
-            interventions.append({
-                "category": "Milkshakes",
-                "severity": "MEDIUM",
-                "finding": f"Milkshakes at {shake_ratio*100:.1f}% of revenue — below median.",
-                "action": "Feature milkshakes prominently in menu boards. Introduce afternoon milkshake happy hour.",
-            })
-
-        if not interventions:
-            interventions.append({
-                "category": "Overall",
-                "severity": "LOW",
-                "finding": "Branch performs above median in both coffee and milkshakes.",
-                "action": "Maintain current strategy. Consider premium upsells.",
-            })
+        # Get top items so OpenClaw can create real, specific combos
+        top_coffees = list(self._get_branch_category_items(branch, "coffee").keys())[:3]
+        top_shakes = list(self._get_branch_category_items(branch, "shakes").keys())[:3]
 
         return {
             "branch": branch,
-            "total_revenue": total,
-            "coffee_revenue": coffee_rev,
-            "coffee_share": f"{coffee_ratio*100:.1f}%",
-            "coffee_percentile": f"{coffee_percentile*100:.0f}th",
-            "coffee_qty": coffee_qty,
-            "shake_revenue": shake_rev,
-            "shake_share": f"{shake_ratio*100:.1f}%",
-            "shake_percentile": f"{shake_percentile*100:.0f}th",
-            "shake_qty": shake_qty,
-            "interventions": interventions,
-            "top_coffee_items": self._get_branch_category_items(branch, "coffee"),
-            "top_shake_items": self._get_branch_category_items(branch, "shakes"),
+            "metrics": {
+                "total_revenue": round(total, 2),
+                "coffee_revenue": round(coffee_rev, 2),
+                "coffee_ratio_actual": round(coffee_ratio, 3),
+                "coffee_ratio_target": coffee_target,
+                "coffee_gap": coffee_gap,
+                "shake_revenue": round(shake_rev, 2),
+                "shake_ratio_actual": round(shake_ratio, 3),
+                "shake_ratio_target": shake_target,
+                "shake_gap": shake_gap,
+            },
+            "franchise_rank": {
+                "coffee_rank": coffee_rank,
+                "out_of": n_branches,
+                "label": "Lowest" if coffee_rank == 1 else ("Highest" if coffee_rank == n_branches else f"#{coffee_rank}")
+            },
+            "best_selling_assets": {
+                "top_coffees": top_coffees,
+                "top_shakes": top_shakes,
+            },
+            "status": {
+                "coffee_struggling": coffee_ratio < coffee_target,
+                "shakes_struggling": shake_ratio < shake_target,
+            }
         }
 
     def save(self, path=None):
@@ -208,11 +184,16 @@ if __name__ == "__main__":
 
     for branch in analyzer.branch_totals.index:
         result = analyzer._branch_strategy(branch)
-        print(f"\n{'='*50}")
-        print(f"Branch: {result['branch']}")
-        print(f"  Coffee: {result['coffee_share']} ({result['coffee_percentile']} percentile)")
-        print(f"  Shakes: {result['shake_share']} ({result['shake_percentile']} percentile)")
-        for inv in result["interventions"]:
-            print(f"  [{inv['severity']}] {inv['category']}: {inv['action']}")
+        print(f"\n{'='*55}")
+        print(f"Branch: {result.get('branch')}")
+        if "error" in result:
+            print(f"  ERROR: {result['error']}")
+            continue
+        m = result["metrics"]
+        print(f"  Coffee: {m['coffee_ratio_actual']*100:.1f}% (target {m['coffee_ratio_target']*100:.0f}%, gap {m['coffee_gap']*100:+.1f}%)")
+        print(f"  Shakes: {m['shake_ratio_actual']*100:.1f}% (target {m['shake_ratio_target']*100:.0f}%, gap {m['shake_gap']*100:+.1f}%)")
+        print(f"  Franchise Coffee Rank: {result['franchise_rank']['label']} of {result['franchise_rank']['out_of']}")
+        print(f"  Top Coffees: {result['best_selling_assets']['top_coffees']}")
+        print(f"  Struggling: coffee={result['status']['coffee_struggling']}, shakes={result['status']['shakes_struggling']}")
 
     analyzer.save()

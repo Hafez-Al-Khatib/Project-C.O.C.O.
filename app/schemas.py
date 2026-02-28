@@ -46,28 +46,12 @@ class ExpansionResponse(BaseModel):
 class GrowthRequest(BaseModel):
     branch_name: Optional[str] = Field(None, description="Branch to analyze. Omit for all branches.")
 
-
-class Intervention(BaseModel):
-    category: str
-    severity: str
-    finding: str
-    action: str
-
-
 class GrowthResponse(BaseModel):
     branch: str
-    total_revenue: float = 0
-    coffee_revenue: float = 0
-    coffee_share: str = "0%"
-    coffee_percentile: str = "0th"
-    coffee_qty: float = 0
-    shake_revenue: float = 0
-    shake_share: str = "0%"
-    shake_percentile: str = "0th"
-    shake_qty: float = 0
-    interventions: List[Dict[str, str]] = []
-    top_coffee_items: Dict[str, Any] = {}
-    top_shake_items: Dict[str, Any] = {}
+    metrics: Optional[Dict[str, Any]] = None
+    franchise_rank: Optional[Dict[str, Any]] = None
+    best_selling_assets: Optional[Dict[str, Any]] = None
+    status: Optional[Dict[str, bool]] = None
     error: Optional[str] = None
 
 

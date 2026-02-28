@@ -271,13 +271,8 @@ def growth_strategy(req: GrowthRequest):
         return GrowthResponse(
             branch=req.branch_name or "Unknown",
             error="Internal model evaluation error. Proceeding with fallback.",
-            interventions=[{
-                "category": "General",
-                "severity": "N/A",
-                "finding": "Model unavailable.",
-                "action": "Review coffee and milkshake sales manually.",
-            }],
         )
+
 
 
 # OpenClaw Skills Manifest
