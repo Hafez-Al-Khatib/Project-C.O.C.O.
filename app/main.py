@@ -256,7 +256,8 @@ def estimate_staffing(req: StaffingRequest):
 
         result = staffing_estimator.predict(
             branch_name=req.branch_name,
-            predicted_volume=req.predicted_volume
+            predicted_volume=req.predicted_volume,
+            date=req.date
         )
         return StaffingResponse(**result)
     except Exception as e:
@@ -370,6 +371,44 @@ async def skills():
             },
         ],
     }
+
+
+# ─────────────────────────────────────────────
+# OpenClaw Interface (ReAct Agent Endpoint)
+# ─────────────────────────────────────────────
+
+from pydantic import BaseModel as PydanticBaseModel
+
+class OpenClawRequest(PydanticBaseModel):
+    query: str
+    context: dict = {}
+
+class OpenClawResponse(PydanticBaseModel):
+    trace: list
+    final_answer: str
+
+@app.post("/openclaw", response_model=OpenClawResponse)
+def openclaw_endpoint(req: OpenClawRequest):
+    """
+    OpenClaw ingestion endpoint.
+    Accepts a natural-language query and optional context,
+    runs the LangGraph ReAct agent (deterministic mode),
+    and returns the full Thought→Action→Observation trace.
+    """
+    try:
+        from agent.react_agent import run_deterministic_react
+        trace = run_deterministic_react(req.query, req.context)
+        final = next(
+            (step["content"] for step in reversed(trace) if step["type"] == "final_answer"),
+            "No final answer generated."
+        )
+        return OpenClawResponse(trace=trace, final_answer=final)
+    except Exception as e:
+        logging.error(f"OpenClaw agent error: {str(e)}")
+        return OpenClawResponse(
+            trace=[{"type": "error", "content": str(e)}],
+            final_answer=f"Agent execution failed: {str(e)}"
+        )
 
 
 if __name__ == "__main__":

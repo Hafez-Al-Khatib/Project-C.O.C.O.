@@ -1,35 +1,35 @@
 <script lang="ts">
   import '../app.css';
-  import { Globe, Lightbulb, Users, BarChart3, Coffee } from 'lucide-svelte';
+  import { Coffee, BrainCircuit } from 'lucide-svelte';
 </script>
 
-<div class="min-h-screen bg-zinc-950 text-zinc-100 selection:bg-amber-500/30">
-  <nav class="sticky top-0 z-50 w-full border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-xl">
-    <div class="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+<div class="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 text-slate-800 selection:bg-amber-500/30">
+  <nav class="sticky top-0 z-50 w-full border-b border-slate-200/60 bg-white/70 backdrop-blur-xl">
+    <div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
       <div class="flex items-center gap-3">
-        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-orange-600 shadow-lg shadow-orange-500/20">
+        <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-600 shadow-lg shadow-orange-500/20">
           <Coffee class="h-5 w-5 text-white" />
         </div>
-        <span class="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-zinc-100 to-zinc-400">Project C.O.C.O.</span>
+        <div class="flex flex-col">
+          <span class="text-base font-bold tracking-tight text-slate-800">Project C.O.C.O.</span>
+          <span class="text-[10px] text-slate-400 font-medium tracking-wider uppercase">Chief of Operations Copilot</span>
+        </div>
       </div>
-      <div class="flex gap-6 text-sm font-medium text-zinc-400">
-        <a href="/" class="hover:text-amber-400 transition-colors flex items-center gap-2">
-          <Globe class="h-4 w-4" /> Expansion
-        </a>
-        <a href="/" class="hover:text-amber-400 transition-colors flex items-center gap-2">
-          <Lightbulb class="h-4 w-4" /> Combos
-        </a>
-        <a href="/" class="hover:text-amber-400 transition-colors flex items-center gap-2">
-          <BarChart3 class="h-4 w-4" /> Demand
-        </a>
-        <a href="/" class="hover:text-amber-400 transition-colors flex items-center gap-2">
-          <Users class="h-4 w-4" /> Staffing
-        </a>
+      <div class="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-full">
+        <BrainCircuit class="h-4 w-4 text-amber-600" />
+        <span class="text-xs font-semibold text-slate-600">Agent Mode</span>
       </div>
     </div>
   </nav>
 
-  <main class="mx-auto max-w-7xl px-6 py-8">
+  <main class="mx-auto max-w-6xl px-6 py-8">
     <slot />
   </main>
+
+  <footer class="border-t border-slate-200/60 py-6">
+    <div class="mx-auto max-w-6xl px-6 flex items-center justify-between text-xs text-slate-400">
+      <span>Conut AI Engineering Hackathon 2026</span>
+      <span>GPR · BayesianRidge · Louvain · OSM · MLFlow</span>
+    </div>
+  </footer>
 </div>

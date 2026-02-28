@@ -1,268 +1,266 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import {
-    Activity,
-    Network,
-    MapPin,
-    ArrowUpRight,
-    Users,
-    TrendingUp,
-    BarChart3,
-    Coffee,
-    RefreshCw,
-    CheckCircle2,
-    XCircle
+    BrainCircuit, Database, Cpu, Eye, MessageSquare,
+    ArrowRight, CheckCircle2, AlertTriangle, Loader2,
+    ChevronDown, RefreshCw, Sparkles, Clock, Target,
+    Wrench
   } from 'lucide-svelte';
 
-  // State
-  let loading = true;
-  let backendStatus = 'checking'; // 'checking', 'online', 'error'
-  
-  // Real Data State
-  let demandPrediction: any = null;
-  let staffingEstimation: any = null;
-  let expansionScore: any = null;
-  let comboOptimizations: any = null;
+  interface TraceStep {
+    type: 'thought' | 'action' | 'observation' | 'final_answer' | 'error';
+    content?: string;
+    tool?: string;
+    input?: string;
+  }
 
-  async function fetchBackendData() {
-    loading = true;
+  let trace: TraceStep[] = [];
+  let finalAnswer = '';
+  let agentState: 'idle' | 'thinking' | 'complete' | 'error' = 'idle';
+  let branchInput = 'Conut Jnah';
+  let monthInput = 11;
+  let yearInput = 2026;
+  let queryInput = '';
+  let elapsedMs = 0;
+
+  $: queryInput = `Analyze ${branchInput} for ${new Date(yearInput, monthInput - 1).toLocaleString('default', { month: 'long' })} ${yearInput}: forecast demand, allocate staffing, evaluate expansion opportunities, and optimize menu combos.`;
+
+  async function runAgent() {
+    agentState = 'thinking';
+    trace = [];
+    finalAnswer = '';
+    const t0 = performance.now();
+
     try {
-      // 1. Check Demand Forecaster (Obj 2)
-      const demandRes = await fetch('http://localhost:8000/tools/predict_demand', {
+      const res = await fetch('http://localhost:8000/openclaw', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branch_name: 'Conut Jnah', month: 11, year: 2026 })
-      });
-      demandPrediction = await demandRes.json();
-
-      // 2. Check Staffing (Obj 4) 
-      const staffRes = await fetch('http://localhost:8000/tools/estimate_staffing', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branch_name: 'Conut Jnah', predicted_volume: demandPrediction?.predicted_volume || 1500 })
-      });
-      staffingEstimation = await staffRes.json();
-
-      // 3. Check Expansion (Obj 3)
-      const expRes = await fetch('http://localhost:8000/tools/expansion_feasibility', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          candidate_lat: 34.4346, 
-          candidate_lon: 35.8362,
-          candidate_features: {
-            coffee_ratio: 0.45,
-            pastry_ratio: 0.35,
-            drinks_ratio: 0.15,
-            shakes_ratio: 0.05
-          }
+        body: JSON.stringify({
+          query: queryInput,
+          context: { branch_name: branchInput, month: monthInput, year: yearInput }
         })
       });
-      expansionScore = await expRes.json();
 
-      // 4. Check Combos (Obj 1)
-      const comboRes = await fetch('http://localhost:8000/tools/get_combos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target_item: 'Cafe Latte', top_n: 3 })
-      });
-      comboOptimizations = await comboRes.json();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      trace = data.trace || [];
+      finalAnswer = data.final_answer || '';
+      agentState = 'complete';
+    } catch (e: any) {
+      agentState = 'error';
+      finalAnswer = `Agent failed: ${e.message}`;
+      trace = [{ type: 'error', content: e.message }];
+    }
 
-      backendStatus = 'online';
-    } catch (e) {
-      console.error("Backend connection failed", e);
-      backendStatus = 'error';
-    } finally {
-      loading = false;
+    elapsedMs = Math.round(performance.now() - t0);
+  }
+
+  function getStepIcon(type: string) {
+    switch(type) {
+      case 'thought': return BrainCircuit;
+      case 'action': return Wrench;
+      case 'observation': return Eye;
+      case 'final_answer': return Target;
+      default: return AlertTriangle;
     }
   }
 
-  onMount(() => {
-    fetchBackendData();
-  });
+  function getStepLabel(type: string) {
+    switch(type) {
+      case 'thought': return 'Thought';
+      case 'action': return 'Action';
+      case 'observation': return 'Observation';
+      case 'final_answer': return 'Final Answer';
+      default: return 'Error';
+    }
+  }
 
+  function getStepColor(type: string) {
+    switch(type) {
+      case 'thought': return { bg: 'bg-violet-50', border: 'border-violet-200', text: 'text-violet-700', badge: 'bg-violet-100 text-violet-700' };
+      case 'action': return { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', badge: 'bg-amber-100 text-amber-700' };
+      case 'observation': return { bg: 'bg-sky-50', border: 'border-sky-200', text: 'text-sky-700', badge: 'bg-sky-100 text-sky-700' };
+      case 'final_answer': return { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-700' };
+      default: return { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', badge: 'bg-red-100 text-red-700' };
+    }
+  }
+
+  let expandedObs: {[key: number]: boolean} = {};
+  function toggleObs(i: number) { expandedObs[i] = !expandedObs[i]; }
 </script>
 
 <svelte:head>
-  <title>Project C.O.C.O. - Analytics Control Center</title>
+  <title>C.O.C.O. — Chief of Operations Copilot (ReAct Agent)</title>
 </svelte:head>
 
-<div class="space-y-10 animate-in fade-in zoom-in-95 duration-700">
-  
-  <!-- Premium Header -->
-  <div class="flex flex-col md:flex-row gap-6 md:items-end justify-between border-b border-zinc-200 pb-8">
-    <div>
-      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold uppercase tracking-wider mb-4">
-        <Activity class="w-3.5 h-3.5" /> Live Production Mode
-      </div>
-      <h1 class="text-4xl font-extrabold tracking-tight text-zinc-900">
-        AI Control Center
-      </h1>
-      <p class="mt-3 text-lg text-zinc-500 max-w-2xl leading-relaxed">
-        Centralized manifest for the Conut Operational Copilot. Real-time inference across all core business intelligence models.
-      </p>
+<div class="space-y-6">
+
+  <!-- Header -->
+  <div class="pb-6 border-b border-slate-200">
+    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-50 border border-violet-200 text-violet-700 text-xs font-semibold uppercase tracking-wider mb-3">
+      <BrainCircuit class="w-3.5 h-3.5" /> ReAct Agent · LangGraph
     </div>
-    
-    <div class="flex items-center gap-4 bg-white rounded-2xl border border-zinc-200 shadow-sm px-5 py-3">
-      <div class="flex flex-col">
-        <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Gateway Status</span>
-        <div class="flex items-center gap-2 mt-1">
-          {#if backendStatus === 'online'}
-            <div class="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)] animate-pulse"></div>
-            <span class="text-sm font-bold text-zinc-700">Online & Syncing</span>
-          {:else if backendStatus === 'error'}
-            <div class="h-2.5 w-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]"></div>
-            <span class="text-sm font-bold text-zinc-700">Connection Failed</span>
-          {:else}
-            <RefreshCw class="h-3 w-3 text-amber-500 animate-spin" />
-            <span class="text-sm font-bold text-zinc-700">Polling...</span>
-          {/if}
-        </div>
+    <h1 class="text-3xl font-extrabold tracking-tight text-slate-900">
+      Chief of Operations Copilot
+    </h1>
+    <p class="mt-2 text-slate-500 max-w-2xl leading-relaxed text-sm">
+      This agent follows the <strong>ReAct</strong> (Reasoning + Acting) framework powered by <strong>LangGraph</strong>. 
+      It chains SQL queries, ML model inference, and strategic analysis into a single reasoning pass.
+    </p>
+  </div>
+
+  <!-- Controls -->
+  <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+    <div class="flex flex-wrap items-end gap-4">
+      <div class="flex flex-col gap-1.5">
+        <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider" for="branch">Branch</label>
+        <select id="branch" bind:value={branchInput} class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500/30">
+          <option>Conut Jnah</option>
+          <option>Conut Main</option>
+          <option>Conut Tyre</option>
+          <option>Main Street Coffee</option>
+        </select>
       </div>
-      <button on:click={fetchBackendData} class="p-2 hover:bg-zinc-100 rounded-lg transition-colors text-zinc-400 hover:text-zinc-900">
-        <RefreshCw class="w-4 h-4 {loading ? 'animate-spin' : ''}" />
+      <div class="flex flex-col gap-1.5">
+        <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider" for="month">Month</label>
+        <select id="month" bind:value={monthInput} class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500/30">
+          {#each Array.from({length: 12}, (_, i) => i + 1) as m}
+            <option value={m}>{new Date(2026, m - 1).toLocaleString('default', { month: 'long' })}</option>
+          {/each}
+        </select>
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider" for="year">Year</label>
+        <input id="year" type="number" bind:value={yearInput} class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-800 w-24 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+      </div>
+      <button
+        on:click={runAgent}
+        disabled={agentState === 'thinking'}
+        class="ml-auto px-5 py-2.5 rounded-xl font-semibold text-sm shadow-sm transition-all
+          {agentState === 'thinking'
+            ? 'bg-slate-200 text-slate-400 cursor-wait'
+            : 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:shadow-md hover:shadow-violet-500/20 hover:scale-[1.02] active:scale-[0.98]'
+          }"
+      >
+        {#if agentState === 'thinking'}
+          <span class="flex items-center gap-2"><Loader2 class="w-4 h-4 animate-spin" /> Agent Reasoning...</span>
+        {:else if agentState === 'complete'}
+          <span class="flex items-center gap-2"><RefreshCw class="w-4 h-4" /> Re-run Agent</span>
+        {:else}
+          <span class="flex items-center gap-2"><Sparkles class="w-4 h-4" /> Run ReAct Agent</span>
+        {/if}
       </button>
+    </div>
+
+    <!-- Query Preview -->
+    <div class="bg-slate-50 rounded-xl px-4 py-3 border border-slate-100">
+      <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+        <MessageSquare class="w-3 h-3" /> Agent Query
+      </p>
+      <p class="text-sm text-slate-600">{queryInput}</p>
     </div>
   </div>
 
-  {#if loading}
-    <div class="flex flex-col items-center justify-center py-20 space-y-4">
-      <div class="h-10 w-10 border-4 border-amber-200 border-t-amber-500 rounded-full animate-spin"></div>
-      <p class="text-zinc-500 font-medium animate-pulse">Running live MLOps inference routines...</p>
-    </div>
-  {:else}
-    <!-- Live Data Grid -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-      
-      <!-- Objective 2: Demand -->
-      <div class="bg-white rounded-3xl border border-zinc-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-        <div class="p-6 border-b border-zinc-100 bg-gradient-to-r from-orange-50 to-white flex justify-between items-start">
-          <div>
-            <div class="flex items-center gap-2 mb-2">
-              <span class="px-2 py-0.5 rounded-md bg-orange-100 text-orange-700 text-xs font-bold">Objective 2</span>
-              <span class="text-xs text-zinc-500 font-medium">{demandPrediction?.model_type || 'Unknown Model'}</span>
-            </div>
-            <h3 class="text-xl font-bold text-zinc-900 flex items-center gap-2">
-              <TrendingUp class="w-5 h-5 text-orange-500" /> Demand Forecaster
-            </h3>
-          </div>
-          <div class="bg-white p-2 rounded-xl shadow-sm border border-zinc-100">
-            <span class="text-xs font-bold text-zinc-400 uppercase block mb-1">Target Branch</span>
-            <span class="text-sm font-semibold text-zinc-800">{demandPrediction?.branch || 'N/A'}</span>
-          </div>
-        </div>
-        <div class="p-6">
-          <div class="flex items-end gap-3 mb-6">
-            <span class="text-4xl font-extrabold text-zinc-900">{(demandPrediction?.predicted_volume || 0).toLocaleString()}</span>
-            <span class="text-zinc-500 font-medium mb-1">Est. Transactions</span>
-          </div>
-          <div class="space-y-3">
-            <div class="flex justify-between items-center text-sm py-2 border-b border-zinc-100">
-              <span class="text-zinc-500">Confidence Interval</span>
-              <span class="font-semibold text-zinc-800">{demandPrediction?.confidence_interval || 'N/A'}</span>
-            </div>
-            <div class="flex justify-between items-center text-sm py-2 border-b border-zinc-100">
-              <span class="text-zinc-500">Model MAPE (Error)</span>
-              <span class="font-semibold px-2 py-1 rounded bg-green-50 text-green-700">{demandPrediction?.mape?.toFixed(1) || '0'}%</span>
-            </div>
-          </div>
-        </div>
+  <!-- Loading -->
+  {#if agentState === 'thinking'}
+    <div class="flex flex-col items-center justify-center py-16 space-y-4">
+      <div class="relative">
+        <div class="h-14 w-14 border-4 border-violet-100 border-t-violet-500 rounded-full animate-spin"></div>
+        <BrainCircuit class="w-6 h-6 text-violet-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
       </div>
-
-      <!-- Objective 4: Staffing -->
-      <div class="bg-white rounded-3xl border border-zinc-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-        <div class="p-6 border-b border-zinc-100 bg-gradient-to-r from-blue-50 to-white flex justify-between items-start">
-          <div>
-             <div class="flex items-center gap-2 mb-2">
-              <span class="px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 text-xs font-bold">Objective 4</span>
-              <span class="text-xs text-zinc-500 font-medium">{staffingEstimation?.model_type || 'Unknown Model'}</span>
-            </div>
-            <h3 class="text-xl font-bold text-zinc-900 flex items-center gap-2">
-              <Users class="w-5 h-5 text-blue-500" /> Shift Staffing Allocation
-            </h3>
-          </div>
-        </div>
-        <div class="p-6">
-          <div class="flex items-end gap-3 mb-6">
-            <span class="text-4xl font-extrabold text-blue-600">{staffingEstimation?.recommended_staff || 0}</span>
-            <span class="text-zinc-500 font-medium mb-1">Crew Members Req.</span>
-          </div>
-          <div class="bg-zinc-50 rounded-xl p-4 border border-zinc-100">
-            <h4 class="text-xs font-bold text-zinc-500 uppercase mb-3">XAI Inference Drivers</h4>
-            <div class="grid grid-cols-2 gap-4">
-               {#if staffingEstimation?.xai_drivers}
-                 {#each Object.entries(staffingEstimation.xai_drivers) as [key, value]}
-                   <div>
-                     <span class="block text-xs text-zinc-500 truncate" title={key}>{key.replace(/_/g, ' ')}</span>
-                     <span class="block text-sm font-semibold text-zinc-800 truncate" title={String(value)}>{value}</span>
-                   </div>
-                 {/each}
-               {:else}
-                 <span class="text-sm text-zinc-400">No driver data</span>
-               {/if}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Objective 3: Expansion -->
-      <div class="bg-white rounded-3xl border border-zinc-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-        <div class="p-6 border-b border-zinc-100 bg-gradient-to-r from-emerald-50 to-white flex justify-between items-start">
-          <div>
-            <div class="flex items-center gap-2 mb-2">
-              <span class="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700 text-xs font-bold">Objective 3</span>
-              <span class="text-xs text-zinc-500 font-medium">OSM Live Integration</span>
-            </div>
-            <h3 class="text-xl font-bold text-zinc-900 flex items-center gap-2">
-              <MapPin class="w-5 h-5 text-emerald-500" /> Real Estate Expansion
-            </h3>
-          </div>
-        </div>
-        <div class="p-6">
-           <div class="flex items-center gap-4 mb-6">
-            <div class="flex-1">
-              <span class="block text-xs font-medium text-zinc-500 mb-1">Target Score (vs {expansionScore?.reference_branch || 'Top Branch'})</span>
-              <div class="flex items-end gap-2">
-                <span class="text-3xl font-extrabold text-emerald-600">{(expansionScore?.similarity_score || 0).toFixed(2)}</span>
-                <span class="text-sm text-zinc-400 mb-1">/ 1.00</span>
-              </div>
-            </div>
-            <div class="h-12 w-px bg-zinc-200"></div>
-            <div class="flex-1">
-              <span class="block text-xs font-medium text-zinc-500 mb-1">Recommendation</span>
-              <span class="text-sm font-semibold text-zinc-800 line-clamp-2">{expansionScore?.recommendation || 'Pending evaluation'}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Objective 1: Combos -->
-      <div class="bg-white rounded-3xl border border-zinc-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-        <div class="p-6 border-b border-zinc-100 bg-gradient-to-r from-purple-50 to-white flex justify-between items-start">
-          <div>
-            <div class="flex items-center gap-2 mb-2">
-              <span class="px-2 py-0.5 rounded-md bg-purple-100 text-purple-700 text-xs font-bold">Objective 1</span>
-              <span class="text-xs text-zinc-500 font-medium">Louvain NetworkX</span>
-            </div>
-            <h3 class="text-xl font-bold text-zinc-900 flex items-center gap-2">
-              <Network class="w-5 h-5 text-purple-500" /> Combo Optimizer
-            </h3>
-          </div>
-        </div>
-        <div class="p-6">
-           <div class="flex items-center gap-3 mb-6">
-             <span class="text-sm text-zinc-500 font-medium">Target Context:</span>
-             <span class="px-3 py-1 bg-zinc-100 rounded-lg text-sm font-bold text-zinc-800">{comboOptimizations?.target_item || 'None'}</span>
-             <ArrowUpRight class="w-4 h-4 text-zinc-400" />
-             <span class="px-3 py-1 bg-purple-100 text-purple-800 rounded-lg text-lg font-bold shadow-sm">{comboOptimizations?.recommended_combo || 'None'}</span>
-           </div>
-           <p class="text-sm text-zinc-600 bg-zinc-50 p-4 rounded-xl border border-zinc-100">
-             <span class="font-bold text-zinc-800 block mb-1">AI Reasoning:</span>
-             {comboOptimizations?.business_reason || 'Waiting for graph traversal.'}
-           </p>
-        </div>
-      </div>
-
+      <p class="text-slate-500 font-medium">Agent is executing ReAct loop...</p>
+      <p class="text-xs text-slate-400">Chaining: SQL Engine → Model Inference → Strategy → Synthesis</p>
     </div>
   {/if}
+
+  <!-- ReAct Trace -->
+  {#if trace.length > 0 && agentState !== 'thinking'}
+    <div class="space-y-0">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+          Reasoning Trace
+          <span class="text-xs font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{trace.length} steps</span>
+        </h2>
+        {#if elapsedMs > 0}
+          <span class="text-xs text-slate-400 flex items-center gap-1">
+            <Clock class="w-3 h-3" /> {elapsedMs}ms total
+          </span>
+        {/if}
+      </div>
+
+      {#each trace as step, i}
+        {@const colors = getStepColor(step.type)}
+        <div class="flex gap-3">
+          <!-- Vertical line -->
+          <div class="flex flex-col items-center">
+            <div class="h-7 w-7 rounded-full {colors.bg} border {colors.border} flex items-center justify-center flex-shrink-0 z-10">
+              <svelte:component this={getStepIcon(step.type)} class="w-3.5 h-3.5 {colors.text}" />
+            </div>
+            {#if i < trace.length - 1}
+              <div class="w-px flex-1 bg-slate-200 min-h-[16px]"></div>
+            {/if}
+          </div>
+
+          <!-- Content -->
+          <div class="pb-4 flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-xs font-bold {colors.badge} px-2 py-0.5 rounded-md uppercase tracking-wider">
+                {getStepLabel(step.type)}
+              </span>
+              {#if step.tool}
+                <span class="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                  {step.tool}
+                </span>
+              {/if}
+            </div>
+
+            {#if step.type === 'thought'}
+              <p class="text-sm text-slate-600 leading-relaxed">{step.content}</p>
+            {:else if step.type === 'action'}
+              <pre class="text-xs font-mono text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 overflow-x-auto whitespace-pre-wrap">{step.input || step.content}</pre>
+            {:else if step.type === 'observation'}
+              <div>
+                <button on:click={() => toggleObs(i)} class="text-xs font-medium text-sky-600 hover:text-sky-800 transition-colors flex items-center gap-1 mb-1">
+                  <ChevronDown class="w-3 h-3 transition-transform {expandedObs[i] ? 'rotate-180' : ''}" />
+                  {expandedObs[i] ? 'Collapse' : 'Expand'} output ({(step.content || '').length} chars)
+                </button>
+                {#if expandedObs[i]}
+                  <pre class="text-xs font-mono text-slate-700 bg-slate-900 text-emerald-400 rounded-lg px-3 py-2 overflow-x-auto max-h-48 whitespace-pre-wrap">{step.content}</pre>
+                {/if}
+              </div>
+            {:else if step.type === 'final_answer'}
+              <div class="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+                <p class="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{step.content}</p>
+              </div>
+            {:else}
+              <p class="text-sm text-red-600">{step.content}</p>
+            {/if}
+          </div>
+        </div>
+      {/each}
+    </div>
+  {/if}
+
+  <!-- Empty State -->
+  {#if agentState === 'idle'}
+    <div class="flex flex-col items-center justify-center py-20 text-center">
+      <div class="h-16 w-16 rounded-2xl bg-gradient-to-br from-violet-100 to-indigo-100 flex items-center justify-center mb-4 shadow-sm">
+        <BrainCircuit class="h-8 w-8 text-violet-600" />
+      </div>
+      <h2 class="text-lg font-bold text-slate-800 mb-2">Ready to Reason</h2>
+      <p class="text-sm text-slate-500 max-w-md leading-relaxed">
+        Select a branch and period, then click <strong>Run ReAct Agent</strong>. The copilot will chain
+        <strong>SQL queries</strong>, <strong>ML inference</strong>, and <strong>strategic analysis</strong> 
+        into a full executive reasoning pass using the ReAct framework.
+      </p>
+      <div class="flex items-center gap-3 mt-6 text-xs text-slate-400">
+        <span class="flex items-center gap-1 px-2 py-1 bg-slate-100 rounded-lg"><Database class="w-3 h-3" /> DuckDB SQL</span>
+        <ArrowRight class="w-3 h-3" />
+        <span class="flex items-center gap-1 px-2 py-1 bg-slate-100 rounded-lg"><Cpu class="w-3 h-3" /> GPR · BayesianRidge</span>
+        <ArrowRight class="w-3 h-3" />
+        <span class="flex items-center gap-1 px-2 py-1 bg-slate-100 rounded-lg"><Target class="w-3 h-3" /> Executive Brief</span>
+      </div>
+    </div>
+  {/if}
+
 </div>

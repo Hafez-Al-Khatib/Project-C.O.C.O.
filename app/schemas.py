@@ -83,12 +83,14 @@ class DemandResponse(BaseModel):
 class StaffingRequest(BaseModel):
     branch_name: str = Field(..., description="Branch to estimate staffing for")
     predicted_volume: Optional[float] = Field(None, description="Predicted demand volume")
+    date: Optional[str] = Field(None, description="Date for inference context (ISO format, e.g. 2026-11-15)")
 
 
 class StaffingResponse(BaseModel):
     branch: str
     predicted_volume: float
     recommended_staff: int
+    confidence_band: Optional[str] = None
     throughput_metric: float = 0
     xai_drivers: Dict[str, str] = {}
     model_type: str = "production"

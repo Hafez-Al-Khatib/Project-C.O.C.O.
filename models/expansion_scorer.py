@@ -1,6 +1,5 @@
 """
 Objective 3 — Expansion Feasibility (Spatial Signature Scoring)
-===============================================================
 Profiles branch performance and uses cosine similarity to score
 potential expansion locations against the best-performing branch.
 
@@ -68,58 +67,68 @@ class OSMClient:
         );
         out body;
         '''
-        
-        try:
-            response = requests.get(overpass_url, params={'data': query}, timeout=15)
-            if response.status_code == 200:
-                elements = response.json().get('elements', [])
-                
-                foot_traffic_tags = ['restaurant', 'cafe', 'fast_food', 'mall', 'supermarket', 'convenience', 'clothes']
-                commercial_tags = ['office', 'bank', 'company']
-                uni_tags = ['university', 'college']
 
-                ft_count = 0
-                com_count = 0
-                uni_count = 0
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                response = requests.get(overpass_url, params={'data': query}, timeout=15)
+                if response.status_code == 200:
+                    elements = response.json().get('elements', [])
 
-                for e in elements:
-                    tags = e.get('tags', {})
-                    amenity = tags.get('amenity', '')
-                    shop = tags.get('shop', '')
-                    office = tags.get('office', '')
-                    
-                    if amenity in foot_traffic_tags or shop in foot_traffic_tags:
-                        ft_count += 1
-                    if amenity in commercial_tags or office:
-                        com_count += 1
-                    if amenity in uni_tags:
-                        uni_count += 1
+                    foot_traffic_tags = ['restaurant', 'cafe', 'fast_food', 'mall', 'supermarket', 'convenience', 'clothes']
+                    commercial_tags = ['office', 'bank', 'company']
+                    uni_tags = ['university', 'college']
 
-                # Normalize features (caps are roughly the max expected in dense Beirut)
-                features = {
-                    "foot_traffic_index": min(1.0, ft_count / 50.0),
-                    "commercial_density": min(1.0, com_count / 30.0),
-                    "university_proximity": min(1.0, uni_count / 3.0),
-                    "raw_ft_count": ft_count,
-                    "raw_com_count": com_count,
-                    "raw_uni_count": uni_count
-                }
-                
-                self.cache[cache_key] = features
-                self._save_cache()
-                time.sleep(1) # Be nice to the API
-                return features
-        except Exception as e:
-            print(f"[OSMClient] Error fetching OSM data: {e}")
-            
-        # Fallback if API fails
+                    ft_count = 0
+                    com_count = 0
+                    uni_count = 0
+
+                    for e in elements:
+                        tags = e.get('tags', {})
+                        amenity = tags.get('amenity', '')
+                        shop = tags.get('shop', '')
+                        office = tags.get('office', '')
+
+                        if amenity in foot_traffic_tags or shop in foot_traffic_tags:
+                            ft_count += 1
+                        if amenity in commercial_tags or office:
+                            com_count += 1
+                        if amenity in uni_tags:
+                            uni_count += 1
+
+                    features = {
+                        "foot_traffic_index": min(1.0, ft_count / 50.0),
+                        "commercial_density": min(1.0, com_count / 30.0),
+                        "university_proximity": min(1.0, uni_count / 3.0),
+                        "raw_ft_count": ft_count,
+                        "raw_com_count": com_count,
+                        "raw_uni_count": uni_count,
+                        "osm_status": "live"
+                    }
+
+                    self.cache[cache_key] = features
+                    self._save_cache()
+                    time.sleep(1)
+                    return features
+                else:
+                    print(f"[OSMClient] HTTP {response.status_code} on attempt {attempt + 1}/{max_retries + 1}")
+            except Exception as e:
+                print(f"[OSMClient] Attempt {attempt + 1}/{max_retries + 1} failed: {e}")
+
+            if attempt < max_retries:
+                backoff = 2 ** attempt
+                print(f"[OSMClient] Retrying in {backoff}s...")
+                time.sleep(backoff)
+
+        print("[OSMClient] Circuit breaker triggered — all retries exhausted, using fallback values.")
         return {
             "foot_traffic_index": 0.5,
             "commercial_density": 0.5,
             "university_proximity": 0.1,
             "raw_ft_count": 0,
             "raw_com_count": 0,
-            "raw_uni_count": 0
+            "raw_uni_count": 0,
+            "osm_status": "fallback (API unreachable after retries)"
         }
 
 
