@@ -1,145 +1,88 @@
-# Project C.O.C.O. (Chief of Operations Conut Optimizer)
+# Project C.O.C.O. (Chief of Operations Copilot)
 
-> An AI-driven decision-support system for **Conut** bakery operations, integrated with OpenClaw.
+> A high-performance Agentic AI Decision-Support System for bakery operations, built with **LangGraph** and probabilistic ML.
 
 ## 🎯 Business Problem
 
-Conut is a growing sweets and beverages business that needs data-driven operational intelligence. Project C.O.C.O. transforms raw POS data into actionable business decisions across five objectives:
+Conut is a growing retail business that requires rapid operational intelligence. Project C.O.C.O. transforms raw POS data into actionable business decisions across five core objectives:
 
-1. **Combo Optimization** — Graph-based co-purchase analysis to find optimal product bundles
-2. **Demand Forecasting** — XGBoost time-series predictions by branch *(Modeling Duo)*
-3. **Expansion Feasibility** — Cosine-similarity scoring against the top-performing branch profile
-4. **Shift Staffing** — Throughput-based staffing estimation from demand forecasts *(Modeling Duo)*
-5. **Coffee & Milkshake Growth** — Percentile-ranked branch analysis with targeted interventions
+1.  **Combo Optimization** — Graph-based co-purchase analysis (Louvain) to identify high-lift product bundles.
+2.  **Demand Forecasting** — V3 Ratio-based **Gaussian Process Regression (GPR)** with rigorous uncertainty quantification.
+3.  **Expansion Feasibility** — OSM-integrated similarity scoring against the bakery's "Gold Standard" branch profile.
+4.  **Shift Staffing** — Risk-bounded staffing estimation based on 95% upper-bound confidence intervals.
+5.  **Coffee & Milkshake Growth** — Strategic gap analysis with targeted, agent-led interventions.
 
-## 🏗️ Architecture
+## 🏗️ Architecture: The ReAct Agent
+
+C.O.C.O. is built on a **Reason + Act (ReAct)** framework. The agent autonomously orchestrates multiple ML tools to solve complex, multi-step business queries.
 
 ```
 ┌─────────────────┐     ┌──────────────────┐     ┌───────────────┐
 │  Raw CSV Data   │ ──▶ │  Data Pipeline   │ ──▶ │  Parquet Files │
 │  (POS Exports)  │     │  (clean_data.py) │     │  (cleaned/)   │
-└─────────────────┘     └──────────────────┘     └───────┬───────┘
+└─────────────────┘     └──────────────────┘ └───────┬───────┘
                                                          │
                         ┌────────────────────────────────┘
                         ▼
-                ┌───────────────┐
-                │  Model Layer  │
-                │  NetworkX     │ ──▶ combo_optimizer.pkl
-                │  Cosine Sim   │ ──▶ expansion_scorer.pkl
-                │  Percentile   │ ──▶ growth_strategy.pkl
-                │  XGBoost*     │ ──▶ demand_model.pkl*
-                └───────┬───────┘
-                        │
-                        ▼
-                ┌───────────────┐     ┌───────────────┐
-                │   FastAPI     │ ◀──▶│   OpenClaw    │
-                │  Port 8000    │     │   (Agent)     │
-                │  /tools/*     │     └───────────────┘
-                │  /skills      │
-                └───────────────┘
-
-* = Modeling Duo responsibility
+                ┌───────────────┐      ┌─────────────────────────────┐
+                │  Model Layer  │      │      LangGraph ReAct Agent  │
+                │  (Prob ML)    │ ◀──▶ │ (Thought -> Action -> Obs)  │
+                └───────┬───────┘      └───────────────┬─────────────┘
+                        │                              │
+                        ▼                              ▼
+                ┌───────────────┐              ┌───────────────┐
+                │   FastAPI     │ ◀──────────▶ │   Frontend    │
+                │  Port 8000    │              │   (Svelte)    │
+                └───────────────┘              └───────────────┘
 ```
 
 ## 🚀 Quick Start
 
 ```bash
-# 1. Create venv and install dependencies
+# 1. Setup Environment
 py -3.11 -m venv venv
-venv\Scripts\activate       # Windows
+venv\Scripts\activate
 pip install -r requirements.txt
 
-# 2. Clean the raw data
+# 2. Run Pipeline & Train V3 Models
 python pipeline/clean_data.py
+python models/demand_forecaster.py  # Trains V3 GPR Model
 
-# 3. Train models
-python models/train_all.py
+# 3. Start Intelligence Server
+uvicorn app.main:app --reload --port 8000
 
-# 4. Start the API server
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-
-# Or do it all at once:
-make build-pipeline
+# 4. Launch Strategic Dashboard
+cd frontend && npm run dev
 ```
 
-## 📡 API Endpoints
+## 📡 Agentic API Endpoints
 
 | Endpoint | Method | Description |
-|---|---|---|
-| `/health` | GET | System health check |
-| `/tools/get_combos` | POST | Combo recommendations (Obj. 1) |
-| `/tools/predict_demand` | POST | Demand forecasting (Obj. 2) |
-| `/tools/expansion_feasibility` | POST | Expansion scoring (Obj. 3) |
-| `/tools/estimate_staffing` | POST | Staffing estimation (Obj. 4) |
-| `/tools/growth_strategy` | POST | Coffee/milkshake strategy (Obj. 5) |
-| `/tools/combo_stats` | GET | Graph statistics |
-| `/tools/branch_rankings` | GET | Branch similarity rankings |
-| `/skills` | GET | OpenClaw skills manifest |
+| :--- | :--- | :--- |
+| `/openclaw` | POST | **Primary Agent Interface.** Accepts natural language business queries. |
+| `/predict_demand` | POST | Probabilistic forecast with 95% confidence bands. |
+| `/estimate_staffing`| POST | Throughput-decapsulated labor requirements. |
+| `/get_combos` | POST | Market basket analysis & community detection. |
+| `/generate_bi_plot`| POST | Dynamic Matplotlib chart generation for executives. |
 
-### Example: Combo Recommendations
+## 🔬 Probabilistic Intelligence
 
-```bash
-curl -X POST http://localhost:8000/tools/get_combos \
-  -H "Content-Type: application/json" \
-  -d '{"target_item": "CHIMNEY THE ONE", "top_n": 3}'
-```
+### Objective 2: V3 Demand Forecasting
+*   **Method:** Gaussian Process Regression (GPR) + Bayesian Ridge.
+*   **Innovation:** Ratio-based target engineering (Growth Multiplier) to handle volatile holiday spikes.
+*   **Risk Management:** Native standard deviation output used to warn executives of "Out-of-Distribution" market events.
 
-### Example: Growth Strategy
+### Objectives 1 & 4: Staffing & Bundling
+*   **Staffing:** Uses a deterministic "Throughput Physics Engine" derived from December labor benchmarks to calculate required headcount from demand forecasts.
+*   **Combos:** NetworkX co-purchase graphs identify item "communities," allowing for intelligent cross-sell recommendations with predicted sales lift.
 
-```bash
-curl -X POST http://localhost:8000/tools/growth_strategy \
-  -H "Content-Type: application/json" \
-  -d '{"branch_name": "Conut - Tyre"}'
-```
+## 👥 Team: Systems & Analytics Lead
 
-## 🔬 Technical Approach
-
-### Objective 1: Combo Optimization
-- **Method:** NetworkX weighted co-purchase graph + Louvain community detection
-- **Metric:** Attach Rate Probability = edge_weight / max(degree(a), degree(b))
-- **XAI:** Community membership, co-purchase count, cross-community upsell identification
-
-### Objective 3: Expansion Feasibility
-- **Method:** Cosine similarity of branch feature vectors (product mix ratios, item diversity)
-- **Reference:** Highest-revenue branch profiled as "gold standard"
-- **Output:** Similarity score with gap analysis and actionable recommendations
-
-### Objective 5: Coffee & Milkshake Growth
-- **Method:** Percentile ranking of coffee/shake revenue ratios across all branches
-- **Output:** Bottom-quartile identification with severity-graded interventions
-- **Cross-reference:** Combo graph data for upsell opportunities
-
-## 📁 Project Structure
-
-```
-Project C.O.C.O/
-├── app/
-│   ├── main.py              # FastAPI application
-│   └── schemas.py           # Pydantic models
-├── models/
-│   ├── combo_optimizer.py   # Objective 1
-│   ├── expansion_scorer.py  # Objective 3
-│   ├── growth_strategy.py   # Objective 5
-│   └── train_all.py         # Training orchestrator
-├── pipeline/
-│   └── clean_data.py        # Data cleaning pipeline
-├── cleaned/                  # Cleaned parquet outputs
-├── Conut bakery Scaled Data/ # Raw CSV data
-├── Makefile
-├── requirements.txt
-└── README.md
-```
-
-## 👥 Team
-
-- **Systems & Analytics Lead (Hafez):** Infrastructure, Objectives 1/3/5, FastAPI, OpenClaw
-- **Modeling Duo:** Objectives 2/4 (XGBoost demand forecasting, staffing estimation)
-
-## 📊 Key Findings
-
-*(To be completed after full pipeline run)*
+**Lead Developer: Hafez Al Khatib**
+*Project C.O.C.O. was developed for the AI Engineering Hackathon at AUB.*
 
 ---
 
-**Course:** AI Engineering — American University of Beirut  
+**Course:** AI Engineering — American University of Beirut
 **Professor:** Ammar Mohanna
+**Date:** February 2026
