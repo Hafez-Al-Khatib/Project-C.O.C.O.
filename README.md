@@ -55,6 +55,18 @@ uvicorn app.main:app --reload --port 8000
 cd frontend && npm run dev
 ```
 
+## 🐳 Docker Deployment
+
+The entire system is containerized for easy deployment:
+
+```bash
+# Start both Backend and Frontend services
+docker-compose up --build
+```
+*   **API:** http://localhost:8000
+*   **Dashboard:** http://localhost:80
+
+
 ## 📡 Agentic API Endpoints
 
 | Endpoint | Method | Description |
