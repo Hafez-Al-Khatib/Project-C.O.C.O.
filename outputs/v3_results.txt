@@ -1,0 +1,20 @@
+V3 RATIO-BASED DEMAND FORECASTER — RESULTS
+======================================================================
+
+Model              |   Avg MAPE |    W1(Oct) |    W2(Nov) |    W3(Dec) |   Avg R2
+--------------------------------------------------------------------------------
+  QR_Q90             |    273.9% |     44.6% |     74.2% |    703.0% | -12.901
+  QR_Q50             |    290.5% |     46.5% |     55.3% |    769.8% | -9.015
+  RandomForest       |    321.1% |     48.3% |    109.8% |    805.3% | -28.606
+  GPR_RBF            |    412.2% |     44.6% |    175.9% |   1016.1% | -93.290
+  GPR_Matern         |    412.5% |     44.6% |    175.9% |   1017.1% | -93.291
+  BayesianRidge      |   1245.1% |     37.4% |    999.0% |   2698.7% | -335.950
+  Ridge              |   1526.9% |     39.1% |    999.0% |   3542.7% | -337.928
+
+WINNER: QR_Q90 (Avg MAPE: 273.9%)
+
+Dec Predictions (QR_Q90):
+    Conut Main      | Actual: 0.068B | Pred: 1.858B | Err: 2636.8%
+    Conut Tyre      | Actual: 1.024B | Pred: 1.877B | Err: 83.3%
+    Conut Jnah      | Actual: 2.878B | Pred: 1.290B | Err: 55.2%
+    Main St Coffee  | Actual: 3.074B | Pred: 1.940B | Err: 36.9%

@@ -31,12 +31,13 @@ from app.schemas import (
 combo_optimizer = None
 expansion_scorer = None
 growth_analyzer = None
+demand_forecaster = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load models on startup."""
-    global combo_optimizer, expansion_scorer, growth_analyzer
+    global combo_optimizer, expansion_scorer, growth_analyzer, demand_forecaster
 
     print("[C.O.C.O.] Loading models...")
     try:
@@ -59,6 +60,13 @@ async def lifespan(app: FastAPI):
         print("[C.O.C.O.] Growth Strategy Analyzer loaded")
     except Exception as e:
         print(f"[C.O.C.O.] Growth Strategy Analyzer failed: {e}")
+
+    try:
+        from models.demand_forecaster import DemandForecaster
+        demand_forecaster = DemandForecaster.load()
+        print(f"[C.O.C.O.] Demand Forecaster loaded ({demand_forecaster.model_name}, MAPE={demand_forecaster.mape:.1f}%)")
+    except Exception as e:
+        print(f"[C.O.C.O.] Demand Forecaster failed: {e}")
 
     print("[C.O.C.O.] All models loaded. Server ready.")
     yield
@@ -156,31 +164,31 @@ def combo_stats():
 def predict_demand(req: DemandRequest):
     """
     Predict demand for a branch in a given month.
-    NOTE: This is a stub endpoint. The Modeling Duo will replace the model
-    and best_model_mape with their MLFlow-tracked GPR/Bayesian Ridge output.
+    Uses the MLFlow-tracked GPR/Bayesian model with contextual features.
+    Falls back to a stub if the forecaster is not loaded.
     """
+    try:
+        if demand_forecaster is not None:
+            result = demand_forecaster.predict(req.branch_name, req.month, req.year)
+            return DemandResponse(**result)
+    except Exception as e:
+        logging.error(f"DemandForecaster inference failed: {str(e)}")
+
+    # Stub fallback if model is not loaded or fails
     predicted_volume = 1250.0
-
-    # Modeling Duo: replace this with the logged MAPE from your MLFlow best run
-    best_model_mape = 15.0  # placeholder: 15% MAPE
-
+    best_model_mape = 15.0
     error_margin = predicted_volume * (best_model_mape / 100)
-    lower_bound = predicted_volume - error_margin
-    upper_bound = predicted_volume + error_margin
-
     return DemandResponse(
         branch=req.branch_name,
         predicted_volume=predicted_volume,
-        confidence_interval=f"{lower_bound:,.0f} to {upper_bound:,.0f}",
+        confidence_interval=f"{predicted_volume - error_margin:,.0f} to {predicted_volume + error_margin:,.0f}",
         mape=best_model_mape,
-        warning=f"Model operates with a +/- {best_model_mape:.0f}% historical error rate. Plan for the upper bound to avoid stock-outs.",
+        warning="Using stub fallback. DemandForecaster model not loaded.",
         month=req.month,
         year=req.year,
-        xai_drivers={"weekend": "45%", "prev_day_sales": "30%"},
-        model_type="stub - awaiting Modeling Duo GPR/Bayesian Ridge implementation",
-
+        xai_drivers={"status": "fallback"},
+        model_type="stub_fallback",
     )
-
 
 # Expansion Feasibility
 
