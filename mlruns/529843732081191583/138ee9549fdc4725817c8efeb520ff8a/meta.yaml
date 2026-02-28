@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/Users/Hafez/Desktop/Project C.O.C.O/mlruns/529843732081191583/138ee9549fdc4725817c8efeb520ff8a/artifacts
+end_time: 1772307037965
+entry_point_name: ''
+experiment_id: '529843732081191583'
+lifecycle_stage: active
+run_id: 138ee9549fdc4725817c8efeb520ff8a
+run_name: GPR_Matern_W1_TestOct
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1772307037767
+status: 3
+tags: []
+user_id: Hafez

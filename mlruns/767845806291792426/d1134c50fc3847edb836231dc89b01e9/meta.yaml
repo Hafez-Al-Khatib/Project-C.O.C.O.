@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/Users/Hafez/Desktop/Project C.O.C.O/mlruns/767845806291792426/d1134c50fc3847edb836231dc89b01e9/artifacts
+end_time: 1772307141424
+entry_point_name: ''
+experiment_id: '767845806291792426'
+lifecycle_stage: active
+run_id: d1134c50fc3847edb836231dc89b01e9
+run_name: GPR_RBF_W1_TestOct
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1772307141267
+status: 3
+tags: []
+user_id: Hafez

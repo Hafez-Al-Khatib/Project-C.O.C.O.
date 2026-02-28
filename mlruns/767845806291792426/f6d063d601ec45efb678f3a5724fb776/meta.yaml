@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/Users/Hafez/Desktop/Project C.O.C.O/mlruns/767845806291792426/f6d063d601ec45efb678f3a5724fb776/artifacts
+end_time: 1772307906785
+entry_point_name: ''
+experiment_id: '767845806291792426'
+lifecycle_stage: active
+run_id: f6d063d601ec45efb678f3a5724fb776
+run_name: Ridge_W3_TestDec
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1772307906674
+status: 3
+tags: []
+user_id: Hafez

@@ -66,11 +66,17 @@ async def lifespan(app: FastAPI):
         print(f"[C.O.C.O.] Growth Strategy Analyzer failed: {e}")
 
     try:
-        from models.demand_forecaster import DemandForecaster
+        from models.demand_forecaster import DemandForecaster, MODELS_DIR
+        import os
+        print(f"[C.O.C.O.] Attempting to load Demand Forecaster...")
+        print(f"[C.O.C.O.] MODELS_DIR = {MODELS_DIR}")
+        print(f"[C.O.C.O.] Current working directory = {os.getcwd()}")
         demand_forecaster = DemandForecaster.load()
         print(f"[C.O.C.O.] Demand Forecaster loaded ({demand_forecaster.model_name}, MAPE={demand_forecaster.mape:.1f}%)")
     except Exception as e:
+        import traceback
         print(f"[C.O.C.O.] Demand Forecaster failed: {e}")
+        traceback.print_exc()
 
     try:
         from models.staffing_estimator import StaffingEstimator
@@ -141,6 +147,14 @@ def get_combos(req: ComboRequest):
     Get product combo recommendations using graph-based co-purchase analysis.
     Uses Louvain community detection to find natural product groupings.
     """
+    global combo_optimizer
+    if combo_optimizer is None:
+        try:
+            from models.combo_optimizer import ComboOptimizer
+            combo_optimizer = ComboOptimizer.load()
+            print("[C.O.C.O.] Combo Optimizer lazy-loaded")
+        except Exception as e:
+            logging.error(f"ComboOptimizer lazy-load failed: {e}")
     try:
         if combo_optimizer is None:
             raise RuntimeError("Combo optimizer not loaded")
@@ -182,12 +196,32 @@ def predict_demand(req: DemandRequest):
     Predict demand for a branch in a given month.
     Uses the MLFlow-tracked GPR/Bayesian model with contextual features.
     """
+    global demand_forecaster
+    
+    # Lazy-load if lifespan failed to load the model
+    if demand_forecaster is None:
+        try:
+            from models.demand_forecaster import DemandForecaster, MODELS_DIR
+            import os
+            print(f"[C.O.C.O.] Lazy-loading Demand Forecaster...")
+            print(f"[C.O.C.O.] MODELS_DIR = {MODELS_DIR}")
+            print(f"[C.O.C.O.] CWD = {os.getcwd()}")
+            demand_forecaster = DemandForecaster.load()
+            print(f"[C.O.C.O.] Demand Forecaster lazy-loaded ({demand_forecaster.model_name}, MAPE={demand_forecaster.mape:.1f}%)")
+        except Exception as e:
+            import traceback
+            logging.error(f"DemandForecaster lazy-load failed: {e}")
+            print(f"[DEBUG] DemandForecaster lazy-load failed: {e}")
+            traceback.print_exc()
+    
     try:
         if demand_forecaster is not None:
             result = demand_forecaster.predict(req.branch_name, req.month, req.year)
             return DemandResponse(**result)
     except Exception as e:
+        import traceback
         logging.error(f"DemandForecaster inference failed: {str(e)}")
+        traceback.print_exc()
 
     # Fallback if model is not loaded or fails
     predicted_volume = 1250.0
@@ -212,6 +246,14 @@ def expansion_feasibility(req: ExpansionRequest):
     """
     Score expansion candidates against top-performing branch using cosine similarity.
     """
+    global expansion_scorer
+    if expansion_scorer is None:
+        try:
+            from models.expansion_scorer import ExpansionScorer
+            expansion_scorer = ExpansionScorer.load()
+            print("[C.O.C.O.] Expansion Scorer lazy-loaded")
+        except Exception as e:
+            logging.error(f"ExpansionScorer lazy-load failed: {e}")
     try:
         if expansion_scorer is None:
             raise RuntimeError("Expansion scorer not loaded")
@@ -259,6 +301,14 @@ def estimate_staffing(req: StaffingRequest):
     """
     Estimate required staffing based on predicted demand using the trained model.
     """
+    global staffing_estimator
+    if staffing_estimator is None:
+        try:
+            from models.staffing_estimator import StaffingEstimator
+            staffing_estimator = StaffingEstimator.load()
+            print(f"[C.O.C.O.] Staffing Estimator lazy-loaded")
+        except Exception as e:
+            logging.error(f"StaffingEstimator lazy-load failed: {e}")
     try:
         if staffing_estimator is None:
             raise RuntimeError("Staffing estimator not loaded")
@@ -290,6 +340,14 @@ def growth_strategy(req: GrowthRequest):
     """
     Analyze coffee and milkshake performance and generate growth interventions.
     """
+    global growth_analyzer
+    if growth_analyzer is None:
+        try:
+            from models.growth_strategy import GrowthStrategyAnalyzer
+            growth_analyzer = GrowthStrategyAnalyzer.load()
+            print("[C.O.C.O.] Growth Strategy Analyzer lazy-loaded")
+        except Exception as e:
+            logging.error(f"GrowthStrategyAnalyzer lazy-load failed: {e}")
     try:
         if growth_analyzer is None:
             raise RuntimeError("Growth strategy analyzer not loaded")

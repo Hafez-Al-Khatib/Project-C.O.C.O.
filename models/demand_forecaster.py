@@ -157,19 +157,8 @@ def build_models():
         compute_score=True, max_iter=500
     )
 
-    # Quantile Regression Q50 (median)
-    models["QR_Q50"] = GradientBoostingRegressor(
-        loss="quantile", alpha=0.5,
-        n_estimators=200, max_depth=2,
-        learning_rate=0.05, subsample=0.8, random_state=42
-    )
-
-    # Quantile Regression Q90 (holiday spike capture)
-    models["QR_Q90"] = GradientBoostingRegressor(
-        loss="quantile", alpha=0.9,
-        n_estimators=200, max_depth=2,
-        learning_rate=0.05, subsample=0.8, random_state=42
-    )
+    # Quantile Regression models removed - they don't serialize well with joblib
+    # Use XGBoost or LightGBM for quantile regression if needed
 
     # Random Forest (ensemble baseline)
     models["RandomForest"] = RandomForestRegressor(
@@ -465,16 +454,56 @@ class DemandForecaster:
 
     @staticmethod
     def load(path=None):
-        if path is None:
-            path = os.path.join(MODELS_DIR, "demand_forecaster.pkl")
-        return joblib.load(path)
+        """Load forecaster from disk. Handles path resolution for Uvicorn and module path issues."""
+        import sys
+        
+        # Add unpickling helper to map __main__.DemandForecaster -> models.demand_forecaster.DemandForecaster
+        # This handles models saved when running the script directly as __main__
+        original_main = sys.modules.get('__main__')
+        if 'models.demand_forecaster' in sys.modules:
+            sys.modules['__main__'] = sys.modules['models.demand_forecaster']
+        
+        try:
+            if path is None:
+                # Try multiple path resolution strategies
+                # Strategy 1: Use MODELS_DIR from module (works when run directly)
+                path = os.path.join(MODELS_DIR, "demand_forecaster.pkl")
+                
+                # Strategy 2: If not found, try from current working directory
+                if not os.path.exists(path):
+                    cwd_path = os.path.join(os.getcwd(), "models", "demand_forecaster.pkl")
+                    if os.path.exists(cwd_path):
+                        path = cwd_path
+                        print(f"[DemandForecaster] Using CWD path: {path}")
+                
+                # Strategy 3: Try from parent of current file (for Uvicorn from app/)
+                if not os.path.exists(path):
+                    # When running from app/, models is in parent
+                    alt_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+                                            "models", "demand_forecaster.pkl")
+                    if os.path.exists(alt_path):
+                        path = alt_path
+                        print(f"[DemandForecaster] Using alternate path: {path}")
+            
+            if not os.path.exists(path):
+                raise FileNotFoundError(f"DemandForecaster model not found at: {path}")
+                
+            return joblib.load(path)
+        finally:
+            # Restore original __main__
+            if original_main is not None:
+                sys.modules['__main__'] = original_main
+        
+    def fallback_predict(self, *args, **kwargs):
+        """Dummy method to allow unpickling of older model versions that referenced this."""
+        pass
 
 
 # ---------------------------------------------------------------------------
 # 5. MAIN
 # ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
+def train_and_save_model():
     print("=" * 70)
     print("  Project C.O.C.O. - Demand Forecaster V3")
     print("  Innovation: Ratio-Based Target Engineering")
@@ -488,7 +517,7 @@ if __name__ == "__main__":
     print(f"  Growth multiplier range: {valid['growth_multiplier'].min():.3f} to {valid['growth_multiplier'].max():.3f}")
 
     # 2. Walk-forward CV
-    print("\n[2/4] Walk-Forward Cross-Validation (7 models x 3 windows)...")
+    print("\n[2/4] Walk-Forward Cross-Validation (5 models x 3 windows)...")
     models = build_models()
     results = walk_forward_cv(df, models, FEATURES_RATIO, "coco_demand_v3_ratio")
 

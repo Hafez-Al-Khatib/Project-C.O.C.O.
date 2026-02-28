@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/Users/Hafez/Desktop/Project C.O.C.O/mlruns/529843732081191583/000be8b09633428ca67b1fe0d1f9d4e9/artifacts
+end_time: 1772307188253
+entry_point_name: ''
+experiment_id: '529843732081191583'
+lifecycle_stage: active
+run_id: 000be8b09633428ca67b1fe0d1f9d4e9
+run_name: QR_Q90_W1_TestOct
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1772307187877
+status: 3
+tags: []
+user_id: Hafez

@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/Users/Hafez/Desktop/Project C.O.C.O/mlruns/529843732081191583/8c734d7e089f4fa6a907c7e0f9712c6b/artifacts
+end_time: 1772307184407
+entry_point_name: ''
+experiment_id: '529843732081191583'
+lifecycle_stage: active
+run_id: 8c734d7e089f4fa6a907c7e0f9712c6b
+run_name: RandomForest_W2_TestNov
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1772307184116
+status: 3
+tags: []
+user_id: Hafez

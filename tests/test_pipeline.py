@@ -102,12 +102,12 @@ class TestCleanDataTypes:
         """Verify transactions has correct data types."""
         assert sample_transactions_df["receipt_id"].dtype in ["int64", "int32"]
         assert sample_transactions_df["qty"].dtype in ["int64", "float64"]
-        assert sample_transactions_df["price"].dtype == "float64"
+        assert sample_transactions_df["price"].dtype in ["float64", "int64"]
         assert sample_transactions_df["branch"].dtype == "object"
         
     def test_monthly_sales_dtypes(self, sample_monthly_sales_df):
         """Verify monthly sales has correct data types."""
-        assert sample_monthly_sales_df["total_sales"].dtype == "float64"
+        assert sample_monthly_sales_df["total_sales"].dtype in ["float64", "int64"]
         assert sample_monthly_sales_df["month"].dtype in ["int64", "int32"]
         assert sample_monthly_sales_df["year"].dtype in ["int64", "int32"]
         

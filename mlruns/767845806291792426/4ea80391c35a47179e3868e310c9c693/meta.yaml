@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/Users/Hafez/Desktop/Project C.O.C.O/mlruns/767845806291792426/4ea80391c35a47179e3868e310c9c693/artifacts
+end_time: 1772307829446
+entry_point_name: ''
+experiment_id: '767845806291792426'
+lifecycle_stage: active
+run_id: 4ea80391c35a47179e3868e310c9c693
+run_name: BayesianRidge_W2_TestNov
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1772307829376
+status: 3
+tags: []
+user_id: Hafez
