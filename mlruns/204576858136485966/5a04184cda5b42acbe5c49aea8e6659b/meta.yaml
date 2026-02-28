@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/Users/Hafez/Desktop/Project C.O.C.O/mlruns/204576858136485966/5a04184cda5b42acbe5c49aea8e6659b/artifacts
+end_time: 1772287054789
+entry_point_name: ''
+experiment_id: '204576858136485966'
+lifecycle_stage: active
+run_id: 5a04184cda5b42acbe5c49aea8e6659b
+run_name: V3_Ratio_QR_Q90_W3_Dec
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1772287054577
+status: 3
+tags: []
+user_id: Hafez

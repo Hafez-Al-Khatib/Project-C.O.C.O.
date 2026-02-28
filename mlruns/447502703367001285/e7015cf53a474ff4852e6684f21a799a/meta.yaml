@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/Users/Hafez/Desktop/Project C.O.C.O/mlruns/447502703367001285/e7015cf53a474ff4852e6684f21a799a/artifacts
+end_time: 1772285968469
+entry_point_name: ''
+experiment_id: '447502703367001285'
+lifecycle_stage: active
+run_id: e7015cf53a474ff4852e6684f21a799a
+run_name: ElasticNet
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1772285968401
+status: 3
+tags: []
+user_id: Hafez

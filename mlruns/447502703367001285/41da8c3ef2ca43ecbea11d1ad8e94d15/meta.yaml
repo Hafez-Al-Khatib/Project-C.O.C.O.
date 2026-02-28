@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/Users/Hafez/Desktop/Project C.O.C.O/mlruns/447502703367001285/41da8c3ef2ca43ecbea11d1ad8e94d15/artifacts
+end_time: 1772285756291
+entry_point_name: ''
+experiment_id: '447502703367001285'
+lifecycle_stage: active
+run_id: 41da8c3ef2ca43ecbea11d1ad8e94d15
+run_name: QuantileGBR_Median
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1772285755952
+status: 3
+tags: []
+user_id: Hafez

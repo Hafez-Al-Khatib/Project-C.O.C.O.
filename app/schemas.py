@@ -29,6 +29,9 @@ class ExpansionRequest(BaseModel):
     candidate_features: Optional[Dict[str, float]] = Field(
         None, description="Custom feature vector for a new location"
     )
+    candidate_lat: Optional[float] = Field(None, description="Latitude for the candidate location (e.g. 33.8966)")
+    candidate_lon: Optional[float] = Field(None, description="Longitude for the candidate location (e.g. 35.4815)")
+
 
 
 class ExpansionResponse(BaseModel):
@@ -55,7 +58,7 @@ class GrowthResponse(BaseModel):
     error: Optional[str] = None
 
 
-# Demand Forecast (Objective 2) - Stub for Modeling Duo
+# Demand Forecast (Objective 2)
 class DemandRequest(BaseModel):
     branch_name: str = Field(..., description="Branch to predict demand for")
     month: int = Field(..., ge=1, le=12)
@@ -71,11 +74,11 @@ class DemandResponse(BaseModel):
     month: int
     year: int
     xai_drivers: Dict[str, str] = {}
-    model_type: str = "stub"
+    model_type: str = "production"
 
 
 
-# ---- Staffing Estimation (Objective 4) - Stub for Modeling Duo ----
+# ---- Staffing Estimation (Objective 4) ----
 
 class StaffingRequest(BaseModel):
     branch_name: str = Field(..., description="Branch to estimate staffing for")
@@ -88,4 +91,4 @@ class StaffingResponse(BaseModel):
     recommended_staff: int
     throughput_metric: float = 0
     xai_drivers: Dict[str, str] = {}
-    model_type: str = "stub"
+    model_type: str = "production"
