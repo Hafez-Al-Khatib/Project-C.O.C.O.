@@ -184,162 +184,67 @@ def build_react_agent(llm):
 
 
 # ──────────────────────────────────────────────
-# Deterministic ReAct Runner (No LLM Required)
+# True ReAct LLM Runner (LangGraph)
 # ──────────────────────────────────────────────
 
-def run_deterministic_react(query: str, context: dict = None) -> list:
+def run_llm_react(query: str, api_key: str = None) -> list:
     """
-    A deterministic ReAct chain that doesn't require an LLM API key.
-    Follows: Thought → Action → Observation for each tool invocation.
-    Returns the full reasoning trace as a list of steps.
+    Runs the true LangGraph ReAct agent using an LLM.
+    Parses the trajectory into the visual Thought→Action→Observation trace.
     """
-    trace = []
-    ctx = context or {}
-    branch = ctx.get("branch_name", "Conut Jnah")
-    month = ctx.get("month", 11)
-    year = ctx.get("year", 2026)
-
-    # Step 1: SQL — gather historical context
-    trace.append({
-        "type": "thought",
-        "content": f"I need to understand the historical performance of {branch} before making predictions. Let me query the sales database."
-    })
-    sql_q = f"SELECT branch, month, total_sales FROM monthly_sales WHERE branch LIKE '%{branch.split(' ')[-1]}%' ORDER BY month"
-    trace.append({
-        "type": "action",
-        "tool": "sql_engine",
-        "input": sql_q
-    })
-    sql_result = sql_engine.invoke(sql_q)
-    trace.append({
-        "type": "observation",
-        "content": sql_result
-    })
-
-    # Step 2: Demand forecast
-    trace.append({
-        "type": "thought",
-        "content": f"Now I have the historical sales data. Let me use the GPR demand forecasting model to predict {branch}'s volume for month {month}/{year}."
-    })
-    demand_params = json.dumps({"branch_name": branch, "month": month, "year": year})
-    trace.append({
-        "type": "action",
-        "tool": "model_inference",
-        "input": f"model_name='demand', params={demand_params}"
-    })
-    demand_result = model_inference.invoke({"model_name": "demand", "params": demand_params})
-    trace.append({
-        "type": "observation",
-        "content": demand_result
-    })
+    if not api_key:
+        api_key = os.environ.get("OPENAI_API_KEY")
+    
+    if not api_key:
+        return [
+            {"type": "error", "content": "OPENAI_API_KEY is missing. Please provide it in the UI or set it as an environment variable."}
+        ]
 
     try:
-        demand_data = json.loads(demand_result)
-        predicted_vol = demand_data.get("predicted_volume", 1250)
-    except Exception:
-        predicted_vol = 1250
-
-    # Step 3: Staffing — chain from demand
-    trace.append({
-        "type": "thought",
-        "content": f"The demand model predicts {predicted_vol:,.0f} transactions. I'll now chain this into the staffing estimator to determine how many crew members are needed."
-    })
-    staffing_params = json.dumps({
-        "branch_name": branch,
-        "predicted_volume": predicted_vol,
-        "date": f"{year}-{str(month).zfill(2)}-15"
-    })
-    trace.append({
-        "type": "action",
-        "tool": "model_inference",
-        "input": f"model_name='staffing', params={staffing_params}"
-    })
-    staffing_result = model_inference.invoke({"model_name": "staffing", "params": staffing_params})
-    trace.append({
-        "type": "observation",
-        "content": staffing_result
-    })
-
-    try:
-        staffing_data = json.loads(staffing_result)
-    except Exception:
-        staffing_data = {}
-
-    # Step 4: Expansion feasibility
-    trace.append({
-        "type": "thought",
-        "content": "Let me also evaluate a candidate expansion location in Tripoli using live OSM spatial data."
-    })
-    expansion_params = json.dumps({
-        "candidate_lat": 34.4346, "candidate_lon": 35.8362,
-        "candidate_features": {"coffee_ratio": 0.45, "pastry_ratio": 0.35, "drinks_ratio": 0.15, "shakes_ratio": 0.05}
-    })
-    trace.append({
-        "type": "action",
-        "tool": "model_inference",
-        "input": f"model_name='expansion', params={expansion_params}"
-    })
-    expansion_result = model_inference.invoke({"model_name": "expansion", "params": expansion_params})
-    trace.append({
-        "type": "observation",
-        "content": expansion_result
-    })
-
-    # Step 5: Combo optimization
-    trace.append({
-        "type": "thought",
-        "content": "Finally, let me check what product combos would maximize basket size for the top-selling item."
-    })
-    combo_params = json.dumps({"target_item": "CAFFE LATTE", "top_n": 3})
-    trace.append({
-        "type": "action",
-        "tool": "model_inference",
-        "input": f"model_name='combos', params={combo_params}"
-    })
-    combo_result = model_inference.invoke({"model_name": "combos", "params": combo_params})
-    trace.append({
-        "type": "observation",
-        "content": combo_result
-    })
-
-    # Step 6: Final synthesis
-    staff_count = staffing_data.get("recommended_staff", "?")
-    confidence = staffing_data.get("confidence_band", "N/A")
-    model_type = staffing_data.get("model_type", "unknown")
-
-    try:
-        exp_data = json.loads(expansion_result)
-        exp_score = exp_data.get("similarity_score", 0)
-        exp_rec = exp_data.get("recommendation", "pending")
-    except Exception:
-        exp_score = 0
-        exp_rec = "pending"
-
-    try:
-        combo_data = json.loads(combo_result)
-        combo_item = combo_data.get("recommended_combo", "None")
-        combo_reason = combo_data.get("business_reason", "")
-    except Exception:
-        combo_item = "None"
-        combo_reason = ""
-
-    synthesis = (
-        f"Executive Brief for {branch} — {month}/{year}:\n\n"
-        f"1. DEMAND: Predicted {predicted_vol:,.0f} transactions for the period.\n"
-        f"2. STAFFING: Recommend {staff_count} crew members ({confidence}). Model: {model_type}.\n"
-        f"3. EXPANSION: Tripoli site scored {exp_score:.2f}/1.00 — {exp_rec}.\n"
-        f"4. MENU: Best pairing for Caffè Latte: {combo_item}. {combo_reason}\n\n"
-        f"The demand-to-staffing chain is fully connected: predicted volume directly drives headcount allocation, "
-        f"ensuring operational efficiency is optimized for the forecasted period."
-    )
-
-    trace.append({
-        "type": "thought",
-        "content": "I now have all the data needed to synthesize an executive operational brief."
-    })
-    trace.append({
-        "type": "final_answer",
-        "content": synthesis
-    })
-
-    return trace
+        from langchain_openai import ChatOpenAI
+        llm = ChatOpenAI(model="gpt-4o", temperature=0, api_key=api_key)
+        app = build_react_agent(llm)
+        
+        trace = []
+        messages = [HumanMessage(content=query)]
+        
+        # Use stream to capture intermediate steps
+        for chunk in app.stream({"messages": messages}):
+            if "agent" in chunk:
+                msg = chunk["agent"]["messages"][0]
+                if getattr(msg, "tool_calls", None):
+                    # Agent wants to act
+                    if msg.content:
+                        trace.append({"type": "thought", "content": msg.content})
+                    else:
+                        trace.append({"type": "thought", "content": f"Invoking tool to gather data..."})
+                        
+                    for tc in msg.tool_calls:
+                        trace.append({
+                            "type": "action",
+                            "tool": tc["name"],
+                            "input": json.dumps(tc["args"])
+                        })
+                else:
+                    # Final answer
+                    if msg.content:
+                        trace.append({"type": "final_answer", "content": msg.content})
+                        
+            elif "tools" in chunk:
+                # Observations from tool execution
+                for msg in chunk["tools"]["messages"]:
+                    content_str = msg.content
+                    if len(content_str) > 2000:
+                        content_str = content_str[:2000] + "\n... (truncated)"
+                    trace.append({
+                        "type": "observation",
+                        "content": content_str
+                    })
+        
+        return trace
+        
+    except Exception as e:
+        logger.error(f"LLM Agent Error: {e}")
+        return [
+            {"type": "error", "content": f"Agent execution failed: {str(e)}"}
+        ]

@@ -381,6 +381,7 @@ from pydantic import BaseModel as PydanticBaseModel
 
 class OpenClawRequest(PydanticBaseModel):
     query: str
+    api_key: str = None
     context: dict = {}
 
 class OpenClawResponse(PydanticBaseModel):
@@ -392,12 +393,17 @@ def openclaw_endpoint(req: OpenClawRequest):
     """
     OpenClaw ingestion endpoint.
     Accepts a natural-language query and optional context,
-    runs the LangGraph ReAct agent (deterministic mode),
+    runs the true LangGraph ReAct agent using an LLM,
     and returns the full Thought→Action→Observation trace.
     """
     try:
-        from agent.react_agent import run_deterministic_react
-        trace = run_deterministic_react(req.query, req.context)
+        from agent.react_agent import run_llm_react
+        trace = run_llm_react(req.query, req.api_key)
+        
+        # If the API key is missing, it returns an error in the trace
+        if trace and trace[0]["type"] == "error":
+            return OpenClawResponse(trace=trace, final_answer=trace[0]["content"])
+            
         final = next(
             (step["content"] for step in reversed(trace) if step["type"] == "final_answer"),
             "No final answer generated."

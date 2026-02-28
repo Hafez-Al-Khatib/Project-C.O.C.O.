@@ -17,15 +17,25 @@
   let trace: TraceStep[] = [];
   let finalAnswer = '';
   let agentState: 'idle' | 'thinking' | 'complete' | 'error' = 'idle';
-  let branchInput = 'Conut Jnah';
-  let monthInput = 11;
-  let yearInput = 2026;
-  let queryInput = '';
+  
+  // New chat-based interface state
+  let apiKey = '';
+  let userQuery = 'Analyze Conut Jnah for November 2026: forecast demand, allocate staffing, evaluate expansion opportunities, and optimize menu combos.';
   let elapsedMs = 0;
 
-  $: queryInput = `Analyze ${branchInput} for ${new Date(yearInput, monthInput - 1).toLocaleString('default', { month: 'long' })} ${yearInput}: forecast demand, allocate staffing, evaluate expansion opportunities, and optimize menu combos.`;
+  onMount(() => {
+    // Attempt to load API key from local storage if previously saved
+    const savedKey = localStorage.getItem('openai_api_key');
+    if (savedKey) apiKey = savedKey;
+  });
 
   async function runAgent() {
+    if (!userQuery.trim()) return;
+    
+    if (apiKey) {
+      localStorage.setItem('openai_api_key', apiKey);
+    }
+
     agentState = 'thinking';
     trace = [];
     finalAnswer = '';
@@ -36,8 +46,9 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          query: queryInput,
-          context: { branch_name: branchInput, month: monthInput, year: yearInput }
+          query: userQuery,
+          api_key: apiKey,
+          context: {} // Context can be strictly inferred by the LLM now
         })
       });
 
@@ -45,7 +56,12 @@
       const data = await res.json();
       trace = data.trace || [];
       finalAnswer = data.final_answer || '';
-      agentState = 'complete';
+      
+      if (trace.length > 0 && trace[0].type === 'error') {
+        agentState = 'error';
+      } else {
+        agentState = 'complete';
+      }
     } catch (e: any) {
       agentState = 'error';
       finalAnswer = `Agent failed: ${e.message}`;
@@ -87,6 +103,13 @@
 
   let expandedObs: {[key: number]: boolean} = {};
   function toggleObs(i: number) { expandedObs[i] = !expandedObs[i]; }
+  
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      runAgent();
+    }
+  }
 </script>
 
 <svelte:head>
@@ -104,60 +127,54 @@
       Chief of Operations Copilot
     </h1>
     <p class="mt-2 text-slate-500 max-w-2xl leading-relaxed text-sm">
-      This agent follows the <strong>ReAct</strong> (Reasoning + Acting) framework powered by <strong>LangGraph</strong>. 
-      It chains SQL queries, ML model inference, and strategic analysis into a single reasoning pass.
+      This agent follows the <strong>ReAct</strong> (Reasoning + Acting) framework powered by <strong>LangGraph</strong> and OpenAI. 
+      Ask the agent freeform questions and watch it autonomously chain SQL queries, ML model inference, and strategic analysis to answer your request.
     </p>
   </div>
 
-  <!-- Controls -->
+  <!-- Chat Input & Controls -->
   <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
-    <div class="flex flex-wrap items-end gap-4">
-      <div class="flex flex-col gap-1.5">
-        <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider" for="branch">Branch</label>
-        <select id="branch" bind:value={branchInput} class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500/30">
-          <option>Conut Jnah</option>
-          <option>Conut Main</option>
-          <option>Conut Tyre</option>
-          <option>Main Street Coffee</option>
-        </select>
-      </div>
-      <div class="flex flex-col gap-1.5">
-        <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider" for="month">Month</label>
-        <select id="month" bind:value={monthInput} class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500/30">
-          {#each Array.from({length: 12}, (_, i) => i + 1) as m}
-            <option value={m}>{new Date(2026, m - 1).toLocaleString('default', { month: 'long' })}</option>
-          {/each}
-        </select>
-      </div>
-      <div class="flex flex-col gap-1.5">
-        <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider" for="year">Year</label>
-        <input id="year" type="number" bind:value={yearInput} class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-800 w-24 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
-      </div>
-      <button
-        on:click={runAgent}
-        disabled={agentState === 'thinking'}
-        class="ml-auto px-5 py-2.5 rounded-xl font-semibold text-sm shadow-sm transition-all
-          {agentState === 'thinking'
-            ? 'bg-slate-200 text-slate-400 cursor-wait'
-            : 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:shadow-md hover:shadow-violet-500/20 hover:scale-[1.02] active:scale-[0.98]'
-          }"
-      >
-        {#if agentState === 'thinking'}
-          <span class="flex items-center gap-2"><Loader2 class="w-4 h-4 animate-spin" /> Agent Reasoning...</span>
-        {:else if agentState === 'complete'}
-          <span class="flex items-center gap-2"><RefreshCw class="w-4 h-4" /> Re-run Agent</span>
-        {:else}
-          <span class="flex items-center gap-2"><Sparkles class="w-4 h-4" /> Run ReAct Agent</span>
-        {/if}
-      </button>
+    
+    <div class="flex flex-col gap-1.5 max-w-sm">
+      <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider" for="api-key">OpenAI API Key (Required for LLM)</label>
+      <input 
+        id="api-key" 
+        type="password" 
+        bind:value={apiKey} 
+        placeholder="sk-..." 
+        class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500/30" 
+      />
     </div>
 
-    <!-- Query Preview -->
-    <div class="bg-slate-50 rounded-xl px-4 py-3 border border-slate-100">
-      <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-        <MessageSquare class="w-3 h-3" /> Agent Query
-      </p>
-      <p class="text-sm text-slate-600">{queryInput}</p>
+    <div class="flex flex-col gap-1.5">
+      <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider" for="query">Ask the Agent</label>
+      <div class="relative">
+        <textarea 
+          id="query" 
+          bind:value={userQuery} 
+          on:keydown={handleKeydown}
+          placeholder="E.g., Which branch is performing worst, and should we allocate more staff to it?" 
+          class="w-full pl-4 pr-32 py-3 min-h-[80px] bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500/30 resize-y"
+        ></textarea>
+        
+        <div class="absolute right-2 bottom-2">
+          <button
+            on:click={runAgent}
+            disabled={agentState === 'thinking'}
+            class="px-4 py-2 rounded-lg font-semibold text-sm shadow-sm transition-all
+              {agentState === 'thinking'
+                ? 'bg-slate-200 text-slate-400 cursor-wait'
+                : 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:shadow-md hover:shadow-violet-500/20 hover:scale-[1.02] active:scale-[0.98]'
+              }"
+          >
+            {#if agentState === 'thinking'}
+              <Loader2 class="w-4 h-4 animate-spin" />
+            {:else}
+              <span class="flex items-center gap-1.5">Send <ArrowRight class="w-3 h-3" /></span>
+            {/if}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
