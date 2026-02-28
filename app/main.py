@@ -11,6 +11,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+import logging
+
+logging.basicConfig(level=logging.ERROR)
 
 # Ensure project root is on path
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -73,11 +76,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Define exact ports OpenClaw and your SvelteKit dashboard use locally
+# In production, this would be read from os.environ.get("ALLOWED_ORIGINS")
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",  # Example OpenClaw frontend
+    "http://localhost:5173",  # Example SvelteKit frontend
+    "http://127.0.0.1:3000",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -104,7 +115,7 @@ async def health():
 # ============================================================================
 
 @app.post("/tools/get_combos", response_model=ComboResponse)
-async def get_combos(req: ComboRequest):
+def get_combos(req: ComboRequest):
     """
     Get product combo recommendations using graph-based co-purchase analysis.
     Uses Louvain community detection to find natural product groupings.
@@ -115,18 +126,21 @@ async def get_combos(req: ComboRequest):
         result = combo_optimizer.predict(req.target_item, req.top_n)
         return result
     except Exception as e:
-        # Graceful fallback: return a default recommendation
+        # 1. Log the dangerous raw error internally
+        logging.error(f"Combo prediction failed: {str(e)}")
+        
+        # 2. Return a SAFE error to the external world
         return ComboResponse(
             target_item=req.target_item,
             recommended_combo="CLASSIC CHIMNEY",
             confidence_weight="N/A (fallback)",
-            business_reason=f"Model unavailable ({str(e)}). Default recommendation based on top-selling item.",
-            error=str(e),
+            business_reason="Default recommendation based on top-selling item.",
+            error="Internal model evaluation error. Proceeding with fallback.",
         )
 
 
 @app.get("/tools/combo_stats")
-async def combo_stats():
+def combo_stats():
     """Return graph statistics and community overview."""
     try:
         if combo_optimizer is None:
@@ -136,7 +150,8 @@ async def combo_stats():
             "communities": combo_optimizer.get_all_communities(),
         }
     except Exception as e:
-        return {"error": str(e)}
+        logging.error(f"Combo stats failed: {str(e)}")
+        return {"error": "Internal server error retrieving combo stats."}
 
 
 # ============================================================================
@@ -144,7 +159,7 @@ async def combo_stats():
 # ============================================================================
 
 @app.post("/tools/predict_demand", response_model=DemandResponse)
-async def predict_demand(req: DemandRequest):
+def predict_demand(req: DemandRequest):
     """
     Predict demand for a branch in a given month.
     NOTE: This is a stub endpoint. The Modeling Duo will replace with
@@ -166,7 +181,7 @@ async def predict_demand(req: DemandRequest):
 # ============================================================================
 
 @app.post("/tools/expansion_feasibility", response_model=ExpansionResponse)
-async def expansion_feasibility(req: ExpansionRequest):
+def expansion_feasibility(req: ExpansionRequest):
     """
     Score expansion candidates against top-performing branch using cosine similarity.
     """
@@ -182,27 +197,29 @@ async def expansion_feasibility(req: ExpansionRequest):
             raise ValueError(result["error"])
         return result
     except Exception as e:
+        logging.error(f"Expansion feasibility failed: {str(e)}")
         return ExpansionResponse(
             reference_branch="Conut Jnah",
             candidate=req.candidate_branch or "Unknown",
             similarity_score=0.0,
-            recommendation=f"Model unavailable ({str(e)}). Manual evaluation needed.",
+            recommendation="Internal model evaluation error. Manual evaluation needed.",
             reference_profile={},
             candidate_profile={},
             gaps={},
-            error=str(e),
+            error="Internal server error. Proceeding with fallback.",
         )
 
 
 @app.get("/tools/branch_rankings")
-async def branch_rankings():
+def branch_rankings():
     """Rank all branches by similarity to the reference branch."""
     try:
         if expansion_scorer is None:
             raise RuntimeError("Expansion scorer not loaded")
         return {"rankings": expansion_scorer.rank_all_branches()}
     except Exception as e:
-        return {"error": str(e)}
+        logging.error(f"Branch rankings failed: {str(e)}")
+        return {"error": "Internal server error retrieving branch rankings."}
 
 
 # ============================================================================
@@ -210,7 +227,7 @@ async def branch_rankings():
 # ============================================================================
 
 @app.post("/tools/estimate_staffing", response_model=StaffingResponse)
-async def estimate_staffing(req: StaffingRequest):
+def estimate_staffing(req: StaffingRequest):
     """
     Estimate required staffing based on predicted demand.
     NOTE: This is a stub endpoint. The Modeling Duo will replace with
@@ -232,7 +249,7 @@ async def estimate_staffing(req: StaffingRequest):
 # ============================================================================
 
 @app.post("/tools/growth_strategy", response_model=GrowthResponse)
-async def growth_strategy(req: GrowthRequest):
+def growth_strategy(req: GrowthRequest):
     """
     Analyze coffee and milkshake performance and generate growth interventions.
     """
@@ -250,9 +267,10 @@ async def growth_strategy(req: GrowthRequest):
 
         return result
     except Exception as e:
+        logging.error(f"Growth strategy failed: {str(e)}")
         return GrowthResponse(
             branch=req.branch_name or "Unknown",
-            error=str(e),
+            error="Internal model evaluation error. Proceeding with fallback.",
             interventions=[{
                 "category": "General",
                 "severity": "N/A",
