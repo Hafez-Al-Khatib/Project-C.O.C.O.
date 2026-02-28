@@ -46,15 +46,20 @@ def build_branch_profiles():
         shakes_rev = 0
 
         for div, amount in div_totals.items():
-            div_lower = str(div).lower() if div else ""
-            if "coffee" in div_lower or "frappes" in div_lower:
+            div_str = str(div).lower() if div else ""
+            
+            # Use specific, robust keywords based on Conut's actual data schemas
+            if any(k in div_str for k in ["coffee", "frappe", "espresso"]):
                 coffee_rev += amount
-            elif "item" in div_lower:
+            elif any(k in div_str for k in ["chimney", "conut", "pastry", "bakery"]):
                 pastry_rev += amount
-            elif "hot and cold" in div_lower or "tea" in div_lower:
-                drinks_rev += amount
-            elif "shake" in div_lower:
+            elif any(k in div_str for k in ["shake", "smoothie"]):
                 shakes_rev += amount
+            elif any(k in div_str for k in ["drink", "tea", "water", "juice"]):
+                drinks_rev += amount
+            else:
+                # IMPORTANT: In a real system, log this unmapped category!
+                pass
 
         # Monthly sales data
         branch_monthly = monthly_df[monthly_df["branch"].str.contains(branch.split(" - ")[0], case=False, na=False)]
@@ -67,6 +72,13 @@ def build_branch_profiles():
             "pastry_ratio": pastry_rev / total_revenue if total_revenue > 0 else 0,
             "drinks_ratio": drinks_rev / total_revenue if total_revenue > 0 else 0,
             "shakes_ratio": shakes_rev / total_revenue if total_revenue > 0 else 0,
+            
+            # --- THE MISSING SPATIAL PROXIES ---
+            # For the hackathon, we hardcode the known signatures of existing branches.
+            # In production, this would be an API call to OpenStreetMap.
+            "foot_traffic_index": 0.9 if "Jnah" in branch else 0.6,
+            "commercial_density": 0.8 if "Hamra" in branch else 0.5,
+            "university_proximity": 1.0 if "Jnah" in branch else 0.2,
             "avg_monthly_revenue": avg_monthly,
             "n_months_active": n_months,
             "n_items_sold": branch_data["item"].nunique(),
@@ -84,7 +96,7 @@ class ExpansionScorer:
         self.profiles_df = None
         self.feature_cols = [
             "coffee_ratio", "pastry_ratio", "drinks_ratio", "shakes_ratio",
-            "n_items_sold",
+            "foot_traffic_index", "commercial_density", "university_proximity"
         ]
 
     def fit(self):
