@@ -1,6 +1,6 @@
 """
-Project C.O.C.O. — FastAPI Application
-========================================
+Project C.O.C.O. - FastAPI Application
+
 Agent Gateway serving as the Private Skills Registry for OpenClaw.
 Every endpoint has graceful error fallbacks.
 """
@@ -42,23 +42,23 @@ async def lifespan(app: FastAPI):
     try:
         from models.combo_optimizer import ComboOptimizer
         combo_optimizer = ComboOptimizer.load()
-        print("[C.O.C.O.] ✓ Combo Optimizer loaded")
+        print("[C.O.C.O.] Combo Optimizer loaded")
     except Exception as e:
-        print(f"[C.O.C.O.] ✗ Combo Optimizer failed: {e}")
+        print(f"[C.O.C.O.] Combo Optimizer failed: {e}")
 
     try:
         from models.expansion_scorer import ExpansionScorer
         expansion_scorer = ExpansionScorer.load()
-        print("[C.O.C.O.] ✓ Expansion Scorer loaded")
+        print("[C.O.C.O.] Expansion Scorer loaded")
     except Exception as e:
-        print(f"[C.O.C.O.] ✗ Expansion Scorer failed: {e}")
+        print(f"[C.O.C.O.] Expansion Scorer failed: {e}")
 
     try:
         from models.growth_strategy import GrowthStrategyAnalyzer
         growth_analyzer = GrowthStrategyAnalyzer.load()
-        print("[C.O.C.O.] ✓ Growth Strategy Analyzer loaded")
+        print("[C.O.C.O.] Growth Strategy Analyzer loaded")
     except Exception as e:
-        print(f"[C.O.C.O.] ✗ Growth Strategy Analyzer failed: {e}")
+        print(f"[C.O.C.O.] Growth Strategy Analyzer failed: {e}")
 
     print("[C.O.C.O.] All models loaded. Server ready.")
     yield
@@ -66,7 +66,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Project C.O.C.O. — Chief of Operations Conut Optimizer",
+    title="Project C.O.C.O: Chief of Operations Conut Optimizer",
     description=(
         "AI-driven decision-support API for Conut bakery operations. "
         "Provides combo optimization, demand forecasting, expansion feasibility, "
@@ -79,8 +79,8 @@ app = FastAPI(
 # Define exact ports OpenClaw and your SvelteKit dashboard use locally
 # In production, this would be read from os.environ.get("ALLOWED_ORIGINS")
 ALLOWED_ORIGINS = [
-    "http://localhost:3000",  # Example OpenClaw frontend
-    "http://localhost:5173",  # Example SvelteKit frontend
+    "http://localhost:3000",  # OpenClaw frontend
+    "http://localhost:5173",  # SvelteKit frontend
     "http://127.0.0.1:3000",
 ]
 
@@ -93,9 +93,7 @@ app.add_middleware(
 )
 
 
-# ============================================================================
-# HEALTH CHECK
-# ============================================================================
+# Health Check
 
 @app.get("/health")
 async def health():
@@ -110,9 +108,7 @@ async def health():
     }
 
 
-# ============================================================================
-# OBJECTIVE 1: COMBO OPTIMIZATION
-# ============================================================================
+# Combo Optimization
 
 @app.post("/tools/get_combos", response_model=ComboResponse)
 def get_combos(req: ComboRequest):
@@ -154,31 +150,39 @@ def combo_stats():
         return {"error": "Internal server error retrieving combo stats."}
 
 
-# ============================================================================
-# OBJECTIVE 2: DEMAND FORECASTING (STUB — Modeling Duo)
-# ============================================================================
+# Demand Forecasting STUB
 
 @app.post("/tools/predict_demand", response_model=DemandResponse)
 def predict_demand(req: DemandRequest):
     """
     Predict demand for a branch in a given month.
-    NOTE: This is a stub endpoint. The Modeling Duo will replace with
-    XGBoost-based predictions.
+    NOTE: This is a stub endpoint. The Modeling Duo will replace the model
+    and best_model_mape with their MLFlow-tracked GPR/Bayesian Ridge output.
     """
-    # Stub: return data-contract mock output
+    predicted_volume = 1250.0
+
+    # Modeling Duo: replace this with the logged MAPE from your MLFlow best run
+    best_model_mape = 15.0  # placeholder: 15% MAPE
+
+    error_margin = predicted_volume * (best_model_mape / 100)
+    lower_bound = predicted_volume - error_margin
+    upper_bound = predicted_volume + error_margin
+
     return DemandResponse(
         branch=req.branch_name,
-        predicted_volume=1250,
+        predicted_volume=predicted_volume,
+        confidence_interval=f"{lower_bound:,.0f} to {upper_bound:,.0f}",
+        mape=best_model_mape,
+        warning=f"Model operates with a +/- {best_model_mape:.0f}% historical error rate. Plan for the upper bound to avoid stock-outs.",
         month=req.month,
         year=req.year,
         xai_drivers={"weekend": "45%", "prev_day_sales": "30%"},
-        model_type="stub — awaiting Modeling Duo XGBoost implementation",
+        model_type="stub - awaiting Modeling Duo GPR/Bayesian Ridge implementation",
+
     )
 
 
-# ============================================================================
-# OBJECTIVE 3: EXPANSION FEASIBILITY
-# ============================================================================
+# Expansion Feasibility
 
 @app.post("/tools/expansion_feasibility", response_model=ExpansionResponse)
 def expansion_feasibility(req: ExpansionRequest):
@@ -222,15 +226,13 @@ def branch_rankings():
         return {"error": "Internal server error retrieving branch rankings."}
 
 
-# ============================================================================
-# OBJECTIVE 4: STAFFING ESTIMATION (STUB — Modeling Duo)
-# ============================================================================
+# Staffing Estimation STUB - Maram and Reem to replace
 
 @app.post("/tools/estimate_staffing", response_model=StaffingResponse)
 def estimate_staffing(req: StaffingRequest):
     """
     Estimate required staffing based on predicted demand.
-    NOTE: This is a stub endpoint. The Modeling Duo will replace with
+    NOTE: This is a stub endpoint. Should be replaced with
     real throughput calculations.
     """
     volume = req.predicted_volume or 1250
@@ -240,13 +242,11 @@ def estimate_staffing(req: StaffingRequest):
         recommended_staff=max(1, int(volume / 200)),
         throughput_metric=200,
         xai_drivers={"demand_level": "moderate", "historical_avg": "5 staff"},
-        model_type="stub — awaiting Modeling Duo implementation",
+        model_type="stub - awaiting Staffing Estimation implementation",
     )
 
 
-# ============================================================================
-# OBJECTIVE 5: COFFEE & MILKSHAKE GROWTH STRATEGY
-# ============================================================================
+# Coffee and Milkshake Growth Strategy
 
 @app.post("/tools/growth_strategy", response_model=GrowthResponse)
 def growth_strategy(req: GrowthRequest):
@@ -280,15 +280,11 @@ def growth_strategy(req: GrowthRequest):
         )
 
 
-# ============================================================================
-# OPENCLAW SKILLS MANIFEST
-# ============================================================================
-
+# OpenClaw Skills Manifest
 @app.get("/skills")
 async def skills():
     """
-    OpenClaw Skills Manifest — describes all available tools
-    for the AI agent to invoke.
+    OpenClaw Skills Manifest. Describes all available tools for the AI agent to invoke.
     """
     return {
         "name": "Project C.O.C.O.",
@@ -353,10 +349,6 @@ async def skills():
         ],
     }
 
-
-# ============================================================================
-# ENTRY POINT
-# ============================================================================
 
 if __name__ == "__main__":
     import uvicorn

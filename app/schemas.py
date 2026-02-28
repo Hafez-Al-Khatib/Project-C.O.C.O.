@@ -1,14 +1,12 @@
 """
-Project C.O.C.O. — Pydantic Request/Response Schemas
-=====================================================
+Project C.O.C.O. - Pydantic Request/Response Schemas
 """
 
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 
 
-# ---- Combo Optimization (Objective 1) ----
-
+# Combo Optimization
 class ComboRequest(BaseModel):
     target_item: str = Field(..., description="Menu item to find combo recommendations for")
     top_n: int = Field(5, description="Number of recommendations to return")
@@ -25,8 +23,7 @@ class ComboResponse(BaseModel):
     available_items: Optional[List[str]] = None
 
 
-# ---- Expansion Feasibility (Objective 3) ----
-
+# Expansion Feasibility
 class ExpansionRequest(BaseModel):
     candidate_branch: Optional[str] = Field(None, description="Existing branch name to evaluate")
     candidate_features: Optional[Dict[str, float]] = Field(
@@ -45,8 +42,7 @@ class ExpansionResponse(BaseModel):
     error: Optional[str] = None
 
 
-# ---- Growth Strategy (Objective 5) ----
-
+# Growth Strategy
 class GrowthRequest(BaseModel):
     branch_name: Optional[str] = Field(None, description="Branch to analyze. Omit for all branches.")
 
@@ -75,8 +71,7 @@ class GrowthResponse(BaseModel):
     error: Optional[str] = None
 
 
-# ---- Demand Forecast (Objective 2) - Stub for Modeling Duo ----
-
+# Demand Forecast (Objective 2) - Stub for Modeling Duo
 class DemandRequest(BaseModel):
     branch_name: str = Field(..., description="Branch to predict demand for")
     month: int = Field(..., ge=1, le=12)
@@ -86,10 +81,14 @@ class DemandRequest(BaseModel):
 class DemandResponse(BaseModel):
     branch: str
     predicted_volume: float
+    confidence_interval: Optional[str] = None  # e.g. "1,062 to 1,437"
+    mape: Optional[float] = None               # From MLFlow best run
+    warning: Optional[str] = None
     month: int
     year: int
     xai_drivers: Dict[str, str] = {}
     model_type: str = "stub"
+
 
 
 # ---- Staffing Estimation (Objective 4) - Stub for Modeling Duo ----
