@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/Users/Hafez/Desktop/Project C.O.C.O/mlruns/204576858136485966/c6f045cdc5fb4aa68d8297ed5f69e353/artifacts
+end_time: 1772287053102
+entry_point_name: ''
+experiment_id: '204576858136485966'
+lifecycle_stage: active
+run_id: c6f045cdc5fb4aa68d8297ed5f69e353
+run_name: V2_LogSale_GPR_W3_Dec
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1772287052864
+status: 3
+tags: []
+user_id: Hafez

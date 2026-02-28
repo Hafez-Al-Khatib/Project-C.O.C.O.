@@ -32,12 +32,13 @@ combo_optimizer = None
 expansion_scorer = None
 growth_analyzer = None
 demand_forecaster = None
+staffing_estimator = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load models on startup."""
-    global combo_optimizer, expansion_scorer, growth_analyzer, demand_forecaster
+    global combo_optimizer, expansion_scorer, growth_analyzer, demand_forecaster, staffing_estimator
 
     print("[C.O.C.O.] Loading models...")
     try:
@@ -67,6 +68,13 @@ async def lifespan(app: FastAPI):
         print(f"[C.O.C.O.] Demand Forecaster loaded ({demand_forecaster.model_name}, MAPE={demand_forecaster.mape:.1f}%)")
     except Exception as e:
         print(f"[C.O.C.O.] Demand Forecaster failed: {e}")
+
+    try:
+        from models.staffing_estimator import StaffingEstimator
+        staffing_estimator = StaffingEstimator.load()
+        print(f"[C.O.C.O.] Staffing Estimator loaded ({getattr(staffing_estimator, 'best_model_name', 'Unknown')})")
+    except Exception as e:
+        print(f"[C.O.C.O.] Staffing Estimator failed: {e}")
 
     print("[C.O.C.O.] All models loaded. Server ready.")
     yield
@@ -204,6 +212,8 @@ def expansion_feasibility(req: ExpansionRequest):
         result = expansion_scorer.score(
             candidate_branch=req.candidate_branch,
             candidate_features=req.candidate_features,
+            lat=req.candidate_lat,
+            lon=req.candidate_lon,
         )
         if "error" in result:
             raise ValueError(result["error"])
@@ -239,19 +249,29 @@ def branch_rankings():
 @app.post("/tools/estimate_staffing", response_model=StaffingResponse)
 def estimate_staffing(req: StaffingRequest):
     """
-    Estimate required staffing based on predicted demand.
-    NOTE: This is a stub endpoint. Should be replaced with
-    real throughput calculations.
+    Estimate required staffing based on predicted demand using the trained model.
     """
-    volume = req.predicted_volume or 1250
-    return StaffingResponse(
-        branch=req.branch_name,
-        predicted_volume=volume,
-        recommended_staff=max(1, int(volume / 200)),
-        throughput_metric=200,
-        xai_drivers={"demand_level": "moderate", "historical_avg": "5 staff"},
-        model_type="stub - awaiting Staffing Estimation implementation",
-    )
+    try:
+        if staffing_estimator is None:
+            raise RuntimeError("Staffing estimator not loaded")
+
+        result = staffing_estimator.predict(
+            branch_name=req.branch_name,
+            predicted_volume=req.predicted_volume
+        )
+        return StaffingResponse(**result)
+    except Exception as e:
+        logging.error(f"Staffing estimation failed: {str(e)}")
+        # Fallback stub
+        volume = req.predicted_volume or 1250
+        return StaffingResponse(
+            branch=req.branch_name,
+            predicted_volume=volume,
+            recommended_staff=max(1, int(volume / 200)),
+            throughput_metric=200,
+            xai_drivers={"demand_level": "moderate", "historical_avg": "5 staff", "error": str(e)},
+            model_type="stub - fallback triggered",
+        )
 
 
 # Coffee and Milkshake Growth Strategy

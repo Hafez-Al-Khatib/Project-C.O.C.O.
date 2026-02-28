@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/Users/Hafez/Desktop/Project C.O.C.O/mlruns/204576858136485966/c04ebcacbd8648b686f66dcbd3cb576f/artifacts
+end_time: 1772287053993
+entry_point_name: ''
+experiment_id: '204576858136485966'
+lifecycle_stage: active
+run_id: c04ebcacbd8648b686f66dcbd3cb576f
+run_name: V3_Ratio_GPR_W2_Nov
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1772287053795
+status: 3
+tags: []
+user_id: Hafez

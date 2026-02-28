@@ -29,6 +29,9 @@ class ExpansionRequest(BaseModel):
     candidate_features: Optional[Dict[str, float]] = Field(
         None, description="Custom feature vector for a new location"
     )
+    candidate_lat: Optional[float] = Field(None, description="Latitude for the candidate location (e.g. 33.8966)")
+    candidate_lon: Optional[float] = Field(None, description="Longitude for the candidate location (e.g. 35.4815)")
+
 
 
 class ExpansionResponse(BaseModel):
