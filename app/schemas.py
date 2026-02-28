@@ -1,0 +1,108 @@
+"""
+Project C.O.C.O. — Pydantic Request/Response Schemas
+=====================================================
+"""
+
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any
+
+
+# ---- Combo Optimization (Objective 1) ----
+
+class ComboRequest(BaseModel):
+    target_item: str = Field(..., description="Menu item to find combo recommendations for")
+    top_n: int = Field(5, description="Number of recommendations to return")
+
+
+class ComboResponse(BaseModel):
+    target_item: str
+    recommended_combo: Optional[str] = None
+    confidence_weight: str = "0%"
+    business_reason: str = ""
+    community_id: int = -1
+    all_recommendations: Optional[List[Dict[str, Any]]] = None
+    error: Optional[str] = None
+    available_items: Optional[List[str]] = None
+
+
+# ---- Expansion Feasibility (Objective 3) ----
+
+class ExpansionRequest(BaseModel):
+    candidate_branch: Optional[str] = Field(None, description="Existing branch name to evaluate")
+    candidate_features: Optional[Dict[str, float]] = Field(
+        None, description="Custom feature vector for a new location"
+    )
+
+
+class ExpansionResponse(BaseModel):
+    reference_branch: str
+    candidate: str
+    similarity_score: float
+    recommendation: str
+    reference_profile: Dict[str, Any]
+    candidate_profile: Dict[str, Any]
+    gaps: Dict[str, float]
+    error: Optional[str] = None
+
+
+# ---- Growth Strategy (Objective 5) ----
+
+class GrowthRequest(BaseModel):
+    branch_name: Optional[str] = Field(None, description="Branch to analyze. Omit for all branches.")
+
+
+class Intervention(BaseModel):
+    category: str
+    severity: str
+    finding: str
+    action: str
+
+
+class GrowthResponse(BaseModel):
+    branch: str
+    total_revenue: float = 0
+    coffee_revenue: float = 0
+    coffee_share: str = "0%"
+    coffee_percentile: str = "0th"
+    coffee_qty: float = 0
+    shake_revenue: float = 0
+    shake_share: str = "0%"
+    shake_percentile: str = "0th"
+    shake_qty: float = 0
+    interventions: List[Dict[str, str]] = []
+    top_coffee_items: Dict[str, Any] = {}
+    top_shake_items: Dict[str, Any] = {}
+    error: Optional[str] = None
+
+
+# ---- Demand Forecast (Objective 2) - Stub for Modeling Duo ----
+
+class DemandRequest(BaseModel):
+    branch_name: str = Field(..., description="Branch to predict demand for")
+    month: int = Field(..., ge=1, le=12)
+    year: int = Field(2026)
+
+
+class DemandResponse(BaseModel):
+    branch: str
+    predicted_volume: float
+    month: int
+    year: int
+    xai_drivers: Dict[str, str] = {}
+    model_type: str = "stub"
+
+
+# ---- Staffing Estimation (Objective 4) - Stub for Modeling Duo ----
+
+class StaffingRequest(BaseModel):
+    branch_name: str = Field(..., description="Branch to estimate staffing for")
+    predicted_volume: Optional[float] = Field(None, description="Predicted demand volume")
+
+
+class StaffingResponse(BaseModel):
+    branch: str
+    predicted_volume: float
+    recommended_staff: int
+    throughput_metric: float = 0
+    xai_drivers: Dict[str, str] = {}
+    model_type: str = "stub"
