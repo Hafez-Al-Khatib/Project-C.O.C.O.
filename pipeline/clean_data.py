@@ -44,6 +44,7 @@ def clean_transactions():
     rows = []
     current_branch = None
     current_customer = None
+    receipt_counter = 0
 
     with open(filepath, "r", encoding="utf-8-sig") as f:
         for line in f:
@@ -91,6 +92,7 @@ def clean_transactions():
                 name_match = re.match(r"^(?:\d+\s+)?(Person_\d+)", first_col)
                 if name_match:
                     current_customer = name_match.group(1)
+                    receipt_counter += 1  # New customer block = new receipt/visit
                     # Check if this line also has item data
                     if len(parts) >= 4 and parts[1].strip():
                         qty = parse_number(parts[1])
@@ -98,6 +100,7 @@ def clean_transactions():
                         price = parse_number(parts[3]) if len(parts) > 3 else 0.0
                         if qty > 0 and desc:
                             rows.append({
+                                "receipt_id": receipt_counter,
                                 "branch": current_branch,
                                 "customer": current_customer,
                                 "qty": qty,
@@ -115,6 +118,7 @@ def clean_transactions():
 
                 if qty > 0 and desc and current_customer:
                     rows.append({
+                        "receipt_id": receipt_counter,
                         "branch": current_branch,
                         "customer": current_customer,
                         "qty": qty,

@@ -27,8 +27,11 @@ def build_copurchase_graph():
     """
     df = pd.read_parquet(os.path.join(CLEANED_DIR, "transactions_products.parquet"))
 
-    # Group items into baskets per customer per branch
-    baskets = df.groupby(["branch", "customer"])["item"].apply(list).reset_index()
+    # Group items into baskets per customer per branch per receipt
+    if "receipt_id" in df.columns:
+        baskets = df.groupby(["branch", "customer", "receipt_id"])["item"].apply(list).reset_index()
+    else:
+        baskets = df.groupby(["branch", "customer"])["item"].apply(list).reset_index()
 
     # Build the graph
     G = nx.Graph()
@@ -50,11 +53,19 @@ def build_copurchase_graph():
         n_customers=("customer", "nunique"),
     ).to_dict("index")
 
-    for node in G.nodes():
+    for node in list(G.nodes()):
         stats = item_stats.get(node, {})
         G.nodes[node]["total_qty"] = stats.get("total_qty", 0)
         G.nodes[node]["total_revenue"] = stats.get("total_revenue", 0)
         G.nodes[node]["n_customers"] = stats.get("n_customers", 0)
+
+    # Prune statistical noise: Remove edges where items were bought together less than 3 times
+    edges_to_remove = [(u, v) for u, v, data in G.edges(data=True) if data.get('weight', 0) < 3]
+    G.remove_edges_from(edges_to_remove)
+    
+    # Remove any nodes that became completely isolated after pruning
+    nodes_to_remove = [node for node, degree in dict(G.degree()).items() if degree == 0]
+    G.remove_nodes_from(nodes_to_remove)
 
     return G
 
@@ -107,16 +118,20 @@ def get_combo_recommendations(G, partition, target_item, top_n=5):
                          G.degree(neighbor, weight="weight"))
         attach_rate = weight / max_degree if max_degree > 0 else 0
 
+        # Give a 20% mathematical boost for being in the same natural cluster
+        combo_score = attach_rate * (1.2 if same_community else 1.0)
+
         recommendations.append({
             "recommended_combo": neighbor,
             "co_purchase_count": weight,
             "attach_rate": round(attach_rate, 3),
             "same_community": same_community,
             "community_id": neighbor_comm,
+            "score": combo_score
         })
 
-    # Sort by attach rate (same community items get a boost)
-    recommendations.sort(key=lambda x: (x["same_community"], x["attach_rate"]), reverse=True)
+    # Sort by the new weighted score instead of the boolean flag
+    recommendations.sort(key=lambda x: x["score"], reverse=True)
     top_recs = recommendations[:top_n]
 
     if top_recs:
