@@ -44,3 +44,10 @@ models/*.joblib
 # Distribution
 *.tar.gz
 *.whl
+
+# Project Data & Docs
+Conut bakery Scaled Data/
+CONUT_AI_ENGINEERING_HACKATHON.md
+Project COCO Architecture.md
+Project COCO Team Breakdown.md
+
