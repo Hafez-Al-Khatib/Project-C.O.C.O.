@@ -11,6 +11,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import matplotlib.pyplot as plt
+import uuid
 import logging
 
 logging.basicConfig(level=logging.ERROR)
@@ -91,6 +94,7 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+app = FastAPI(title="C.O.C.O. Agent Backend Gateway", lifespan=lifespan)
 
 # Define exact ports OpenClaw and your SvelteKit dashboard use locally
 # In production, this would be read from os.environ.get("ALLOWED_ORIGINS")
@@ -104,10 +108,16 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
+os.makedirs(os.path.join(BASE_DIR, "static", "plots"), exist_ok=True)
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+
+@app.get("/")
+def health_check():
+    return {"status": "ok", "message": "C.O.C.O. Agent Backend Gateway is running."}
 
 # Health Check
 
@@ -379,43 +389,154 @@ async def skills():
 
 from pydantic import BaseModel as PydanticBaseModel
 
+from fastapi.responses import StreamingResponse
+
+class MessageInput(PydanticBaseModel):
+    role: str
+    content: str
+
 class OpenClawRequest(PydanticBaseModel):
-    query: str
-    api_key: str = None
+    messages: list[MessageInput]
+    gemini_api_key: str = None
     context: dict = {}
 
-class OpenClawResponse(PydanticBaseModel):
-    trace: list
-    final_answer: str
-
-@app.post("/openclaw", response_model=OpenClawResponse)
-def openclaw_endpoint(req: OpenClawRequest):
+@app.post("/openclaw")
+async def openclaw_endpoint(req: OpenClawRequest):
     """
     OpenClaw ingestion endpoint.
-    Accepts a natural-language query and optional context,
-    runs the true LangGraph ReAct agent using an LLM,
-    and returns the full Thought→Action→Observation trace.
+    Accepts a conversation history (messages array),
+    runs the true LangGraph ReAct agent using Gemini,
+    and streams back Server-Sent Events (SSE) for both
+    tool traces and the final token response.
     """
-    try:
-        from agent.react_agent import run_llm_react
-        trace = run_llm_react(req.query, req.api_key)
-        
-        # If the API key is missing, it returns an error in the trace
-        if trace and trace[0]["type"] == "error":
-            return OpenClawResponse(trace=trace, final_answer=trace[0]["content"])
-            
-        final = next(
-            (step["content"] for step in reversed(trace) if step["type"] == "final_answer"),
-            "No final answer generated."
-        )
-        return OpenClawResponse(trace=trace, final_answer=final)
-    except Exception as e:
-        logging.error(f"OpenClaw agent error: {str(e)}")
-        return OpenClawResponse(
-            trace=[{"type": "error", "content": str(e)}],
-            final_answer=f"Agent execution failed: {str(e)}"
-        )
+    from agent.react_agent import stream_llm_react
+    
+    messages_data = [{"role": m.role, "content": m.content} for m in req.messages]
+    
+    return StreamingResponse(
+        stream_llm_react(messages_data, req.gemini_api_key),
+        media_type="text/event-stream"
+    )
 
+class DemandPlotRequest(PydanticBaseModel):
+    branch_name: str
+    historical_months: list[str]
+    historical_sales: list[float]
+    prediction_month: str
+    mean_prediction: float
+    lower_bound: float
+    upper_bound: float
+
+@app.post("/tools/generate_demand_confidence_plot")
+async def generate_demand_confidence_plot(req: DemandPlotRequest):
+    """Generates a line chart showing historical sales and a GPR prediction with confidence bounds."""
+    fig, ax = plt.subplots(figsize=(7, 4))
+    
+    # Plot historical
+    ax.plot(req.historical_months, req.historical_sales, marker='o', color='#3b82f6', label='Historical Sales')
+    
+    # Plot prediction point
+    ax.plot([req.prediction_month], [req.mean_prediction], marker='*', markersize=12, color='#8b5cf6', label='GPR Forecast')
+    
+    # Connect last historical point to prediction
+    if req.historical_months and req.historical_sales:
+        ax.plot([req.historical_months[-1], req.prediction_month], 
+                [req.historical_sales[-1], req.mean_prediction], 
+                linestyle='--', color='#8b5cf6')
+        
+    # Plot confidence band (we mock the fill for the last point just for visual flavor)
+    if req.historical_months:
+        ax.fill_between([req.historical_months[-1], req.prediction_month],
+                        [req.historical_sales[-1], req.lower_bound],
+                        [req.historical_sales[-1], req.upper_bound],
+                        color='#8b5cf6', alpha=0.2, label='95% Confidence Interval')
+
+    ax.set_ylabel('LBP')
+    ax.set_title(f'Demand Forecast & Uncertainty: {req.branch_name}')
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, loc: f"{x/1e9:.1f}B"))
+    ax.legend(loc='upper left', fontsize='small')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    
+    plot_id = str(uuid.uuid4())[:8]
+    filepath = f"static/plots/demand_{plot_id}.png"
+    plt.savefig(os.path.join(BASE_DIR, filepath))
+    plt.close()
+    
+    image_url = f"http://localhost:8000/{filepath}"
+    markdown_image = f"![Demand Forecast for {req.branch_name}]({image_url})"
+    return {"status": "success", "markdown_image": markdown_image}
+
+class ComboPlotRequest(PydanticBaseModel):
+    item_a: str
+    item_b: str
+    base_sales_a: float
+    base_sales_b: float
+    expected_lift_sales: float
+
+@app.post("/tools/generate_combo_lift_plot")
+async def generate_combo_lift_plot(req: ComboPlotRequest):
+    """Generates a bar chart showing expected sales lift from bundling two items."""
+    fig, ax = plt.subplots(figsize=(6, 4))
+    categories = [f"{req.item_a}\n(Standalone)", f"{req.item_b}\n(Standalone)", "Bundled\n(Expected)"]
+    values = [req.base_sales_a, req.base_sales_b, req.expected_lift_sales]
+    colors = ['#cbd5e1', '#cbd5e1', '#10b981']
+    
+    bars = ax.bar(categories, values, color=colors)
+    ax.set_ylabel('Sales Volume (Qty)')
+    ax.set_title(f'Apriori Combo Lift:\n{req.item_a} + {req.item_b}')
+    
+    # Add value labels
+    for bar in bars:
+        ax.text(bar.get_x() + bar.get_width()/2., bar.get_height(),
+                f'{int(bar.get_height())}',
+                ha='center', va='bottom')
+                
+    plt.tight_layout()
+    
+    plot_id = str(uuid.uuid4())[:8]
+    filepath = f"static/plots/combo_{plot_id}.png"
+    plt.savefig(os.path.join(BASE_DIR, filepath))
+    plt.close()
+    
+    image_url = f"http://localhost:8000/{filepath}"
+    markdown_image = f"![Combo Lift Plot]({image_url})"
+    return {"status": "success", "markdown_image": markdown_image}
+
+class CoffeeGapRequest(PydanticBaseModel):
+    branch_names: list[str]
+    coffee_ratios: list[float]
+
+@app.post("/tools/generate_coffee_gap_plot")
+async def generate_coffee_gap_plot(req: CoffeeGapRequest):
+    """Generates a horizontal bar chart of branch coffee ratio performance vs 20% target."""
+    fig, ax = plt.subplots(figsize=(7, max(4, len(req.branch_names) * 0.5)))
+    
+    y_pos = range(len(req.branch_names))
+    
+    colors = ['#ef4444' if r < 0.20 else '#10b981' for r in req.coffee_ratios]
+    ax.barh(y_pos, req.coffee_ratios, color=colors)
+    
+    # Target line
+    ax.axvline(x=0.20, color='#f59e0b', linestyle='--', linewidth=2, label='20% Core Coffee Target')
+    
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(req.branch_names)
+    ax.invert_yaxis()  # labels read top-to-bottom
+    ax.set_xlabel('Coffee Sales Ratio')
+    ax.set_title('Coffee Expansion Gap Analysis (Target: 20%)')
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, loc: f"{x*100:.0f}%"))
+    ax.legend(loc='lower right', fontsize='small')
+    plt.tight_layout()
+    
+    plot_id = str(uuid.uuid4())[:8]
+    filepath = f"static/plots/coffee_{plot_id}.png"
+    plt.savefig(os.path.join(BASE_DIR, filepath))
+    plt.close()
+    
+    image_url = f"http://localhost:8000/{filepath}"
+    markdown_image = f"![Coffee Gap Plot]({image_url})"
+    return {"status": "success", "markdown_image": markdown_image}
 
 if __name__ == "__main__":
     import uvicorn

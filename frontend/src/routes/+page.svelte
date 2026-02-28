@@ -1,74 +1,132 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import {
-    BrainCircuit, Database, Cpu, Eye, MessageSquare,
-    ArrowRight, CheckCircle2, AlertTriangle, Loader2,
-    ChevronDown, RefreshCw, Sparkles, Clock, Target,
-    Wrench
-  } from 'lucide-svelte';
+  import { onMount, tick } from 'svelte';
+  import { ArrowUp, Command, Loader2, Sparkles, Activity, BrainCircuit, Wrench, Eye, AlertTriangle, BookOpen } from 'lucide-svelte';
+  import { marked } from 'marked';
 
-  interface TraceStep {
+  type TraceStep = {
     type: 'thought' | 'action' | 'observation' | 'final_answer' | 'error';
     content?: string;
     tool?: string;
     input?: string;
-  }
-
-  let trace: TraceStep[] = [];
-  let finalAnswer = '';
-  let agentState: 'idle' | 'thinking' | 'complete' | 'error' = 'idle';
+  };
   
-  // New chat-based interface state
-  let apiKey = '';
-  let userQuery = 'Analyze Conut Jnah for November 2026: forecast demand, allocate staffing, evaluate expansion opportunities, and optimize menu combos.';
-  let elapsedMs = 0;
+  type Message = {
+    role: 'user' | 'assistant';
+    content: string;
+  };
 
-  onMount(() => {
-    // Attempt to load API key from local storage if previously saved
-    const savedKey = localStorage.getItem('openai_api_key');
+  type AnalysisGroup = {
+    id: number;
+    messageIndex: number;
+    steps: TraceStep[];
+  };
+
+  let messages: Message[] = [];
+  let analyses: AnalysisGroup[] = [];
+  let agentState: 'idle' | 'thinking' | 'error' = 'idle';
+  
+  let apiKey = '';
+  let userQuery = '';
+  let chatContainer: HTMLElement;
+  let sanitize = (html: string) => html;
+
+  onMount(async () => {
+    const DOMPurify = (await import('dompurify')).default;
+    sanitize = DOMPurify.sanitize;
+
+    const savedKey = localStorage.getItem('gemini_api_key');
     if (savedKey) apiKey = savedKey;
+    
+    messages = [{
+      role: 'assistant', 
+      content: 'I am the Chief of Operations Copilot. Describe your strategic goal or issue, and I will analyze our models and databases to assist you.'
+    }];
   });
 
-  async function runAgent() {
-    if (!userQuery.trim()) return;
-    
-    if (apiKey) {
-      localStorage.setItem('openai_api_key', apiKey);
+  async function scrollToBottom() {
+    await tick();
+    if (chatContainer) {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
     }
+  }
+
+  async function submitQuery() {
+    if (!userQuery.trim() || agentState === 'thinking') return;
+    if (apiKey) localStorage.setItem('gemini_api_key', apiKey);
+
+    messages = [...messages, { role: 'user', content: userQuery }];
+    userQuery = '';
+    
+    messages = [...messages, { role: 'assistant', content: '' }];
+    const assistantIndex = messages.length - 1;
+    
+    const analysisId = Date.now();
+    analyses = [{ id: analysisId, messageIndex: assistantIndex, steps: [] }, ...analyses];
 
     agentState = 'thinking';
-    trace = [];
-    finalAnswer = '';
-    const t0 = performance.now();
+    scrollToBottom();
 
     try {
       const res = await fetch('http://localhost:8000/openclaw', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          query: userQuery,
-          api_key: apiKey,
-          context: {} // Context can be strictly inferred by the LLM now
+          messages: messages.slice(0, -1),
+          gemini_api_key: apiKey,
+          context: {}
         })
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      trace = data.trace || [];
-      finalAnswer = data.final_answer || '';
       
-      if (trace.length > 0 && trace[0].type === 'error') {
-        agentState = 'error';
-      } else {
-        agentState = 'complete';
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      if (!reader) throw new Error("No reader");
+      
+      let buffer = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6).trim();
+            if (!dataStr) continue;
+            try {
+              const parsed = JSON.parse(dataStr);
+              if (parsed.type === 'token') {
+                messages[assistantIndex].content += parsed.content;
+                scrollToBottom();
+              } else if (parsed.type === 'trace') {
+                analyses = analyses.map(a => 
+                  a.id === analysisId ? { ...a, steps: [...a.steps, parsed.step] } : a
+                );
+              } else if (parsed.type === 'error') {
+                messages[assistantIndex].content += `\n\n**Error:** ${parsed.content}`;
+                agentState = 'error';
+              }
+            } catch (e) {
+              console.warn("Parse error for SSE data:", dataStr, e);
+            }
+          }
+        }
       }
+      setTimeout(() => { if (agentState !== 'error') agentState = 'idle'; }, 300);
     } catch (e: any) {
       agentState = 'error';
-      finalAnswer = `Agent failed: ${e.message}`;
-      trace = [{ type: 'error', content: e.message }];
+      messages[assistantIndex].content += `\n\nAgent failed: ${e.message}`;
     }
+  }
 
-    elapsedMs = Math.round(performance.now() - t0);
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      submitQuery();
+    }
   }
 
   function getStepIcon(type: string) {
@@ -76,208 +134,161 @@
       case 'thought': return BrainCircuit;
       case 'action': return Wrench;
       case 'observation': return Eye;
-      case 'final_answer': return Target;
       default: return AlertTriangle;
-    }
-  }
-
-  function getStepLabel(type: string) {
-    switch(type) {
-      case 'thought': return 'Thought';
-      case 'action': return 'Action';
-      case 'observation': return 'Observation';
-      case 'final_answer': return 'Final Answer';
-      default: return 'Error';
-    }
-  }
-
-  function getStepColor(type: string) {
-    switch(type) {
-      case 'thought': return { bg: 'bg-violet-50', border: 'border-violet-200', text: 'text-violet-700', badge: 'bg-violet-100 text-violet-700' };
-      case 'action': return { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', badge: 'bg-amber-100 text-amber-700' };
-      case 'observation': return { bg: 'bg-sky-50', border: 'border-sky-200', text: 'text-sky-700', badge: 'bg-sky-100 text-sky-700' };
-      case 'final_answer': return { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-700' };
-      default: return { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', badge: 'bg-red-100 text-red-700' };
-    }
-  }
-
-  let expandedObs: {[key: number]: boolean} = {};
-  function toggleObs(i: number) { expandedObs[i] = !expandedObs[i]; }
-  
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      runAgent();
     }
   }
 </script>
 
 <svelte:head>
-  <title>C.O.C.O. — Chief of Operations Copilot (ReAct Agent)</title>
+  <title>C.O.C.O. Copilot</title>
 </svelte:head>
 
-<div class="space-y-6">
-
-  <!-- Header -->
-  <div class="pb-6 border-b border-slate-200">
-    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-50 border border-violet-200 text-violet-700 text-xs font-semibold uppercase tracking-wider mb-3">
-      <BrainCircuit class="w-3.5 h-3.5" /> ReAct Agent · LangGraph
-    </div>
-    <h1 class="text-3xl font-extrabold tracking-tight text-slate-900">
-      Chief of Operations Copilot
-    </h1>
-    <p class="mt-2 text-slate-500 max-w-2xl leading-relaxed text-sm">
-      This agent follows the <strong>ReAct</strong> (Reasoning + Acting) framework powered by <strong>LangGraph</strong> and OpenAI. 
-      Ask the agent freeform questions and watch it autonomously chain SQL queries, ML model inference, and strategic analysis to answer your request.
-    </p>
-  </div>
-
-  <!-- Chat Input & Controls -->
-  <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
-    
-    <div class="flex flex-col gap-1.5 max-w-sm">
-      <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider" for="api-key">OpenAI API Key (Required for LLM)</label>
-      <input 
-        id="api-key" 
-        type="password" 
-        bind:value={apiKey} 
-        placeholder="sk-..." 
-        class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500/30" 
-      />
-    </div>
-
-    <div class="flex flex-col gap-1.5">
-      <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider" for="query">Ask the Agent</label>
-      <div class="relative">
-        <textarea 
-          id="query" 
-          bind:value={userQuery} 
-          on:keydown={handleKeydown}
-          placeholder="E.g., Which branch is performing worst, and should we allocate more staff to it?" 
-          class="w-full pl-4 pr-32 py-3 min-h-[80px] bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500/30 resize-y"
-        ></textarea>
-        
-        <div class="absolute right-2 bottom-2">
-          <button
-            on:click={runAgent}
-            disabled={agentState === 'thinking'}
-            class="px-4 py-2 rounded-lg font-semibold text-sm shadow-sm transition-all
-              {agentState === 'thinking'
-                ? 'bg-slate-200 text-slate-400 cursor-wait'
-                : 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:shadow-md hover:shadow-violet-500/20 hover:scale-[1.02] active:scale-[0.98]'
-              }"
-          >
-            {#if agentState === 'thinking'}
-              <Loader2 class="w-4 h-4 animate-spin" />
-            {:else}
-              <span class="flex items-center gap-1.5">Send <ArrowRight class="w-3 h-3" /></span>
-            {/if}
-          </button>
+<div class="h-screen flex bg-white font-sans text-slate-900 overflow-hidden text-[13px]">
+  
+  <!-- Left Side: Chat UI -->
+  <main class="flex-1 flex flex-col items-center relative h-full bg-[#FAFAFA]">
+    <!-- Header -->
+    <header class="w-full flex justify-between items-center px-6 py-4 border-b border-slate-200 bg-white/50 backdrop-blur-md absolute top-0 z-10 shrink-0">
+      <div class="flex items-center gap-3">
+        <div class="w-7 h-7 bg-black rounded shadow-sm flex items-center justify-center">
+          <Command class="w-4 h-4 text-white" />
+        </div>
+        <div class="flex flex-col">
+          <span class="font-semibold text-[13px] tracking-tight text-black">C.O.C.O.</span>
+          <span class="text-[10px] text-slate-400 font-medium">Chief of Operations AI Copilot</span>
         </div>
       </div>
-    </div>
-  </div>
-
-  <!-- Loading -->
-  {#if agentState === 'thinking'}
-    <div class="flex flex-col items-center justify-center py-16 space-y-4">
-      <div class="relative">
-        <div class="h-14 w-14 border-4 border-violet-100 border-t-violet-500 rounded-full animate-spin"></div>
-        <BrainCircuit class="w-6 h-6 text-violet-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+      <div>
+        <input 
+          type="password" bind:value={apiKey} placeholder="Gemini API Key..." 
+          class="px-3 py-1.5 w-56 text-[12px] bg-white border border-slate-200 rounded-lg outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-400 shadow-sm" 
+        />
       </div>
-      <p class="text-slate-500 font-medium">Agent is executing ReAct loop...</p>
-      <p class="text-xs text-slate-400">Chaining: SQL Engine → Model Inference → Strategy → Synthesis</p>
-    </div>
-  {/if}
+    </header>
 
-  <!-- ReAct Trace -->
-  {#if trace.length > 0 && agentState !== 'thinking'}
-    <div class="space-y-0">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
-          Reasoning Trace
-          <span class="text-xs font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{trace.length} steps</span>
-        </h2>
-        {#if elapsedMs > 0}
-          <span class="text-xs text-slate-400 flex items-center gap-1">
-            <Clock class="w-3 h-3" /> {elapsedMs}ms total
-          </span>
-        {/if}
-      </div>
-
-      {#each trace as step, i}
-        {@const colors = getStepColor(step.type)}
-        <div class="flex gap-3">
-          <!-- Vertical line -->
-          <div class="flex flex-col items-center">
-            <div class="h-7 w-7 rounded-full {colors.bg} border {colors.border} flex items-center justify-center flex-shrink-0 z-10">
-              <svelte:component this={getStepIcon(step.type)} class="w-3.5 h-3.5 {colors.text}" />
+    <!-- Chat Messages -->
+    <div bind:this={chatContainer} class="w-full max-w-3xl flex-1 overflow-y-auto px-6 pt-28 pb-32">
+      <div class="space-y-8 min-h-full flex flex-col justify-end">
+        {#each messages as msg}
+          {#if msg.role === 'user'}
+            <div class="flex justify-end animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div class="max-w-[75%] bg-[#F4F4F5] border border-slate-200/60 text-[#111111] px-4 py-3 rounded-2xl rounded-tr-sm shadow-sm leading-relaxed text-[14px] font-medium whitespace-pre-wrap">
+                {msg.content}
+              </div>
             </div>
-            {#if i < trace.length - 1}
-              <div class="w-px flex-1 bg-slate-200 min-h-[16px]"></div>
-            {/if}
-          </div>
-
-          <!-- Content -->
-          <div class="pb-4 flex-1 min-w-0">
-            <div class="flex items-center gap-2 mb-1">
-              <span class="text-xs font-bold {colors.badge} px-2 py-0.5 rounded-md uppercase tracking-wider">
-                {getStepLabel(step.type)}
-              </span>
-              {#if step.tool}
-                <span class="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
-                  {step.tool}
-                </span>
-              {/if}
-            </div>
-
-            {#if step.type === 'thought'}
-              <p class="text-sm text-slate-600 leading-relaxed">{step.content}</p>
-            {:else if step.type === 'action'}
-              <pre class="text-xs font-mono text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 overflow-x-auto whitespace-pre-wrap">{step.input || step.content}</pre>
-            {:else if step.type === 'observation'}
-              <div>
-                <button on:click={() => toggleObs(i)} class="text-xs font-medium text-sky-600 hover:text-sky-800 transition-colors flex items-center gap-1 mb-1">
-                  <ChevronDown class="w-3 h-3 transition-transform {expandedObs[i] ? 'rotate-180' : ''}" />
-                  {expandedObs[i] ? 'Collapse' : 'Expand'} output ({(step.content || '').length} chars)
-                </button>
-                {#if expandedObs[i]}
-                  <pre class="text-xs font-mono text-slate-700 bg-slate-900 text-emerald-400 rounded-lg px-3 py-2 overflow-x-auto max-h-48 whitespace-pre-wrap">{step.content}</pre>
+          {:else}
+            <div class="flex gap-4 group">
+              <div class="w-7 h-7 bg-white border border-slate-200 rounded-md flex items-center justify-center shrink-0 shadow-sm mt-0.5">
+                {#if agentState === 'thinking' && !msg.content && msg === messages[messages.length-1]}
+                  <Loader2 class="w-3.5 h-3.5 text-slate-400 animate-spin" />
+                {:else}
+                  <Sparkles class="w-3.5 h-3.5 text-slate-700" />
                 {/if}
               </div>
-            {:else if step.type === 'final_answer'}
-              <div class="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
-                <p class="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{step.content}</p>
+              <div class="flex-1 max-w-[85%] prose prose-sm prose-slate max-w-none prose-p:leading-relaxed prose-pre:bg-slate-50 prose-pre:border prose-pre:border-slate-200 prose-pre:rounded-lg prose-pre:text-slate-700 prose-headings:font-semibold">
+                {#if !msg.content && agentState === 'thinking'}
+                  <div class="flex items-center gap-1.5 h-6 text-slate-400">
+                    <span class="w-1.5 h-1.5 rounded-full bg-slate-300 animate-pulse"></span>
+                    <span class="w-1.5 h-1.5 rounded-full bg-slate-300 animate-pulse delay-75"></span>
+                    <span class="w-1.5 h-1.5 rounded-full bg-slate-300 animate-pulse delay-150"></span>
+                  </div>
+                {:else}
+                  {@html sanitize(marked.parse(msg.content) || '')}
+                {/if}
               </div>
-            {:else}
-              <p class="text-sm text-red-600">{step.content}</p>
-            {/if}
-          </div>
+            </div>
+          {/if}
+        {/each}
+      </div>
+    </div>
+
+    <!-- Input Area -->
+    <div class="absolute bottom-0 w-full max-w-3xl p-6 bg-gradient-to-t from-[#FAFAFA] via-[#FAFAFA] to-transparent shrink-0">
+      <div class="relative bg-white border border-slate-200 rounded-xl shadow-sm focus-within:border-slate-300 focus-within:ring-4 focus-within:ring-slate-100 transition-all">
+        <textarea 
+          bind:value={userQuery} 
+          on:keydown={handleKeydown}
+          placeholder="Outline your strategic request..."
+          class="w-full bg-transparent p-4 pr-14 outline-none resize-none min-h-[60px] text-[14px] placeholder-slate-400 rounded-xl"
+        ></textarea>
+        <button 
+          on:click={submitQuery}
+          disabled={agentState === 'thinking' || !userQuery.trim() || !apiKey}
+          class="absolute right-2 bottom-2 w-8 h-8 flex items-center justify-center rounded-lg transition-colors
+            {agentState === 'thinking' || !userQuery.trim() || !apiKey 
+              ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+              : 'bg-black text-white hover:bg-zinc-800 shadow-sm'}"
+        >
+          <ArrowUp class="w-4 h-4" />
+        </button>
+      </div>
+      {#if !apiKey}
+        <div class="absolute -top-2 left-1/2 -translate-x-1/2 bg-red-50 text-red-600 px-3 py-1 rounded-full text-[10px] font-bold border border-red-100 shadow-sm flex items-center gap-1">
+          <AlertTriangle class="w-3 h-3" /> API Key Required
         </div>
+      {/if}
+    </div>
+  </main>
+
+  <!-- Right Side: Knowledge Bank / Inspector -->
+  <aside class="w-[420px] border-l border-slate-200 bg-white flex flex-col h-full shrink-0 shadow-[-4px_0_24px_rgba(0,0,0,0.02)] z-20">
+    <header class="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+      <div class="flex items-center gap-2 text-[13px] font-semibold text-slate-800">
+        <Activity class="w-4 h-4 text-slate-400" />
+        Inspector
+      </div>
+      <div class="text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-500 rounded uppercase tracking-widest border border-slate-200/60">
+        {analyses.filter(a => a.steps.length > 0).length} Tickers
+      </div>
+    </header>
+
+    <div class="flex-1 overflow-y-auto p-4 space-y-4">
+      {#if analyses.filter(a => a.steps.length > 0).length === 0}
+         <div class="h-full flex flex-col items-center justify-center text-slate-400 space-y-3 opacity-80">
+           <div class="w-12 h-12 bg-slate-50 border border-slate-200 border-dashed rounded-xl flex items-center justify-center">
+             <BookOpen class="w-5 h-5 text-slate-300" />
+           </div>
+           <p class="text-[12px] text-center max-w-[200px] leading-relaxed">Agent reasoning and backend tool execution will appear here.</p>
+         </div>
+      {/if}
+
+      {#each analyses as analysis}
+        {#if analysis.steps.length > 0}
+          <div class="bg-white border border-slate-200 rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.02)] overflow-hidden animate-in slide-in-from-right-4 fade-in duration-300">
+            <div class="bg-slate-50/80 px-4 py-2.5 border-b border-slate-100 flex justify-between items-center">
+              <span class="font-semibold text-[11px] text-slate-600 uppercase tracking-widest">Job #{analysis.id.toString().slice(-4)}</span>
+              <span class="text-[10px] text-slate-400 font-medium">Turn {analysis.messageIndex}</span>
+            </div>
+            
+            <div class="divide-y divide-slate-100">
+              {#each analysis.steps as step}
+                <div class="px-4 py-3 flex items-start gap-3 hover:bg-slate-50/50 transition-colors">
+                  <div class="mt-0.5 text-slate-400">
+                    <svelte:component this={getStepIcon(step.type)} class="w-3.5 h-3.5" />
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <span class="font-bold text-[9px] uppercase tracking-widest text-slate-400 mb-1 block">{step.type}</span>
+                    
+                    {#if step.type === 'action'}
+                      <div class="font-mono text-[10px] bg-slate-50 p-2 rounded-md text-slate-700 break-all border border-slate-200 shadow-sm inline-block">
+                        <span class="font-bold text-slate-900">{step.tool}</span><span class="text-slate-500">({step.input})</span>
+                      </div>
+                    {:else if step.type === 'observation'}
+                      <div class="text-slate-600 font-mono text-[10px] bg-white border border-slate-200 p-2 rounded-md max-h-32 overflow-y-auto shadow-sm whitespace-pre-wrap">
+                        {step.content}
+                      </div>
+                    {:else}
+                      <div class="text-slate-700 leading-relaxed text-[12px]">
+                        {step.content}
+                      </div>
+                    {/if}
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
       {/each}
     </div>
-  {/if}
-
-  <!-- Empty State -->
-  {#if agentState === 'idle'}
-    <div class="flex flex-col items-center justify-center py-20 text-center">
-      <div class="h-16 w-16 rounded-2xl bg-gradient-to-br from-violet-100 to-indigo-100 flex items-center justify-center mb-4 shadow-sm">
-        <BrainCircuit class="h-8 w-8 text-violet-600" />
-      </div>
-      <h2 class="text-lg font-bold text-slate-800 mb-2">Ready to Reason</h2>
-      <p class="text-sm text-slate-500 max-w-md leading-relaxed">
-        Select a branch and period, then click <strong>Run ReAct Agent</strong>. The copilot will chain
-        <strong>SQL queries</strong>, <strong>ML inference</strong>, and <strong>strategic analysis</strong> 
-        into a full executive reasoning pass using the ReAct framework.
-      </p>
-      <div class="flex items-center gap-3 mt-6 text-xs text-slate-400">
-        <span class="flex items-center gap-1 px-2 py-1 bg-slate-100 rounded-lg"><Database class="w-3 h-3" /> DuckDB SQL</span>
-        <ArrowRight class="w-3 h-3" />
-        <span class="flex items-center gap-1 px-2 py-1 bg-slate-100 rounded-lg"><Cpu class="w-3 h-3" /> GPR · BayesianRidge</span>
-        <ArrowRight class="w-3 h-3" />
-        <span class="flex items-center gap-1 px-2 py-1 bg-slate-100 rounded-lg"><Target class="w-3 h-3" /> Executive Brief</span>
-      </div>
-    </div>
-  {/if}
-
+  </aside>
 </div>

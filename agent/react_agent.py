@@ -144,19 +144,76 @@ def growth_strategy(branch_name: str) -> str:
         return f"Growth strategy error: {str(e)}"
 
 
+@tool
+def generate_demand_confidence_plot(branch_name: str, historical_months: list[str], historical_sales: list[float], prediction_month: str, mean_prediction: float, lower_bound: float, upper_bound: float) -> str:
+    """Generates a line chart showing historical sales and a GPR prediction with confidence bounds. Use this when the user asks for a visual forecast, chart, or graph of demand."""
+    import requests
+    try:
+        resp = requests.post(
+            "http://localhost:8000/tools/generate_demand_confidence_plot",
+            json={"branch_name": branch_name, "historical_months": historical_months, "historical_sales": historical_sales, "prediction_month": prediction_month, "mean_prediction": mean_prediction, "lower_bound": lower_bound, "upper_bound": upper_bound},
+            timeout=15
+        )
+        return json.dumps(resp.json(), indent=2)
+    except Exception as e:
+        return f"Plot error: {str(e)}"
+
+@tool
+def generate_combo_lift_plot(item_a: str, item_b: str, base_sales_a: float, base_sales_b: float, expected_lift_sales: float) -> str:
+    """Generates a bar chart showing expected sales lift from bundling two items. Use this when the user asks for a combo lift chart or graph."""
+    import requests
+    try:
+        resp = requests.post(
+            "http://localhost:8000/tools/generate_combo_lift_plot",
+            json={"item_a": item_a, "item_b": item_b, "base_sales_a": base_sales_a, "base_sales_b": base_sales_b, "expected_lift_sales": expected_lift_sales},
+            timeout=15
+        )
+        return json.dumps(resp.json(), indent=2)
+    except Exception as e:
+        return f"Plot error: {str(e)}"
+
+@tool
+def generate_coffee_gap_plot(branch_names: list[str], coffee_ratios: list[float]) -> str:
+    """Generates a horizontal bar chart of branch coffee ratio performance vs 20% target. Use this when the user asks to visualize coffee performance across branches."""
+    import requests
+    try:
+        resp = requests.post(
+            "http://localhost:8000/tools/generate_coffee_gap_plot",
+            json={"branch_names": branch_names, "coffee_ratios": coffee_ratios},
+            timeout=15
+        )
+        return json.dumps(resp.json(), indent=2)
+    except Exception as e:
+        return f"Plot error: {str(e)}"
+
 # ──────────────────────────────────────────────
 # LANGGRAPH ReAct Agent
 # ──────────────────────────────────────────────
 
-ALL_TOOLS = [sql_engine, model_inference, growth_strategy]
+ALL_TOOLS = [sql_engine, model_inference, growth_strategy, generate_demand_confidence_plot, generate_combo_lift_plot, generate_coffee_gap_plot]
 
 
 class AgentState(TypedDict):
     messages: Sequence[BaseMessage]
 
 
+from langchain_core.messages import SystemMessage
+
 def build_react_agent(llm):
     """Build a LangGraph ReAct agent with the three operational tools."""
+    
+    # The essential System Prompt forcing the AI into the Level 2 Agentic Copilot role
+    sys_msg = SystemMessage(content=(
+        "You are an elite AI Copilot assisting the human Chief of Operations for Conut bakery. "
+        "You do NOT make final decisions; you provide rigorous, tool-backed strategic recommendations.\n\n"
+        "RULES:\n"
+        "1. Always Use Tools: Never guess numbers. If asked about sales, staffing, combos, or expansion, you MUST execute the relevant API tools.\n"
+        "2. Chain of Thought: If a user asks a complex question, use multiple tools in sequence before answering (e.g., check demand then calculate staff).\n"
+        "3. Explain the Risk: You must always report the mathematical uncertainty or confidence bounds returned by the models. Never present a prediction as absolute fact.\n"
+        "4. Actionable Advice: End every response with a clear, data-driven recommendation for the human executive to approve. Format your output using Markdown (bolding, lists, and headers).\n"
+        "5. Plotting & BI Visuals: When generating plots or visualizations: If the user asks for a chart, graph, or visual evaluation, you must call the appropriate plotting tool (e.g., generate_demand_confidence_plot, generate_combo_lift_plot, generate_coffee_gap_plot).\n"
+        "   The tool will return a markdown_image string (e.g., ![Plot](http://...)). You MUST include this exact markdown string in your final chat response so the image renders for the user. Do not modify the URL.\n"
+    ))
     
     llm_with_tools = llm.bind_tools(ALL_TOOLS)
 
@@ -167,9 +224,28 @@ def build_react_agent(llm):
         return END
 
     def call_model(state: AgentState):
-        messages = state["messages"]
-        response = llm_with_tools.invoke(messages)
-        return {"messages": [response]}
+        messages = [sys_msg] + list(state["messages"])
+        
+        # GEMINI STRICT VALIDATION PATCH
+        # The Google GenAI SDK strictly enforces that all AIMessages have non-empty 'content' strings.
+        # When Gemini generates a tool_call, LangChain stores an AIMessage with content="".
+        # When LangGraph feeds this back on the next turn alongside the ToolMessage observation, Gemini crashes.
+        # We must intercept and patch any empty AIMessage contents here.
+        patched_messages = []
+        for m in messages:
+            if isinstance(m, AIMessage):
+                if not m.content:
+                    # Create a new AIMessage copying everything but forcing content to a single space
+                    m = AIMessage(content=" ", tool_calls=m.tool_calls, additional_kwargs=m.additional_kwargs)
+            patched_messages.append(m)
+            
+        try:
+            response = llm_with_tools.invoke(patched_messages)
+            return {"messages": [response]}
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"LLM INVOKE ERROR: {e}")
+            raise
 
     tool_node = ToolNode(ALL_TOOLS)
 
@@ -186,65 +262,93 @@ def build_react_agent(llm):
 # ──────────────────────────────────────────────
 # True ReAct LLM Runner (LangGraph)
 # ──────────────────────────────────────────────
+import json
+import os
+import logging
+from langchain_core.messages import HumanMessage, AIMessage
 
-def run_llm_react(query: str, api_key: str = None) -> list:
+logger = logging.getLogger(__name__)
+
+async def stream_llm_react(messages_data: list[dict], api_key: str = None):
     """
-    Runs the true LangGraph ReAct agent using an LLM.
-    Parses the trajectory into the visual Thought→Action→Observation trace.
+    Runs the true LangGraph ReAct agent using Gemini.
+    Yields Server-Sent Events (SSE) formatting:
+      - data: {"type":"trace", "step": {...}}   -> For Reasoning (Thought/Action/Observation)
+      - data: {"type":"token", "content": "..."}-> For Final Answer streaming
     """
     if not api_key:
-        api_key = os.environ.get("OPENAI_API_KEY")
+        api_key = os.environ.get("GEMINI_API_KEY")
     
     if not api_key:
-        return [
-            {"type": "error", "content": "OPENAI_API_KEY is missing. Please provide it in the UI or set it as an environment variable."}
-        ]
+        yield f"data: {json.dumps({'type': 'error', 'content': 'GEMINI_API_KEY is missing. Please provide it in the UI.'})}\n\n"
+        return
 
     try:
-        from langchain_openai import ChatOpenAI
-        llm = ChatOpenAI(model="gpt-4o", temperature=0, api_key=api_key)
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0, google_api_key=api_key)
         app = build_react_agent(llm)
         
-        trace = []
-        messages = [HumanMessage(content=query)]
-        
-        # Use stream to capture intermediate steps
-        for chunk in app.stream({"messages": messages}):
-            if "agent" in chunk:
-                msg = chunk["agent"]["messages"][0]
-                if getattr(msg, "tool_calls", None):
-                    # Agent wants to act
-                    if msg.content:
-                        trace.append({"type": "thought", "content": msg.content})
+        # Hydrate messages safely for Gemini's strict role checks
+        # Instead of sending all messages back (which fails if tools are skipped or roles dont alternate),
+        # we collapse the past history into the latest prompt context.
+        if not messages_data:
+            langchain_msgs = [HumanMessage(content="Hello")]
+        else:
+            # Extract out the last user message
+            last_query = messages_data[-1].get("content", "Hello").strip()
+            if not last_query:
+                last_query = "Hello"
+            
+            # Build conversation history for context
+            history_str = ""
+            for m in messages_data[:-1]:
+                content = m.get("content", "").strip()
+                if not content: continue
+                role = "User" if m.get("role") == "user" else "Copilot"
+                history_str += f"{role}: {content}\n\n"
+            
+            if history_str:
+                final_content = f"PREVIOUS CONVERSATION CONTEXT:\n{history_str}\n\nACTUAL QUERY:\n{last_query}"
+            else:
+                final_content = last_query
+                
+            langchain_msgs = [HumanMessage(content=final_content)]
+
+        # Use astream_events to catch both tool executions and streamed tokens
+        async for event in app.astream_events({"messages": langchain_msgs}, version="v2"):
+            kind = event["event"]
+            
+            # --- Stream the Agent's Final Answer Tokens ---
+            if kind == "on_chat_model_stream":
+                chunk = event["data"]["chunk"]
+                if hasattr(chunk, "content") and chunk.content and not chunk.tool_calls:
+                    content_to_yield = chunk.content
+                    if isinstance(content_to_yield, list):
+                        # Sometimes Gemini streams list chunks like [{"text": "..."}]
+                        content_to_yield = "".join([c.get("text", "") for c in content_to_yield if isinstance(c, dict) and "text" in c])
+                        
+                    if isinstance(content_to_yield, str) and content_to_yield:
+                        yield f"data: {json.dumps({'type': 'token', 'content': content_to_yield})}\n\n"
+
+            # --- Capture Tool Calls (Action) ---
+            elif kind == "on_tool_start":
+                yield f"data: {json.dumps({'type': 'trace', 'step': {'type': 'action', 'tool': event['name'], 'input': json.dumps(event['data'].get('input'))}})}\n\n"
+
+            # --- Capture Tool Outputs (Observation) ---
+            elif kind == "on_tool_end":
+                output = event['data'].get('output')
+                if output:
+                    if hasattr(output, 'content'):
+                        content_str = str(output.content)
                     else:
-                        trace.append({"type": "thought", "content": f"Invoking tool to gather data..."})
-                        
-                    for tc in msg.tool_calls:
-                        trace.append({
-                            "type": "action",
-                            "tool": tc["name"],
-                            "input": json.dumps(tc["args"])
-                        })
-                else:
-                    # Final answer
-                    if msg.content:
-                        trace.append({"type": "final_answer", "content": msg.content})
-                        
-            elif "tools" in chunk:
-                # Observations from tool execution
-                for msg in chunk["tools"]["messages"]:
-                    content_str = msg.content
+                        content_str = str(output)
+                    
                     if len(content_str) > 2000:
                         content_str = content_str[:2000] + "\n... (truncated)"
-                    trace.append({
-                        "type": "observation",
-                        "content": content_str
-                    })
-        
-        return trace
-        
+                    
+                    yield f"data: {json.dumps({'type': 'trace', 'step': {'type': 'observation', 'content': content_str}})}\n\n"
+
     except Exception as e:
-        logger.error(f"LLM Agent Error: {e}")
-        return [
-            {"type": "error", "content": f"Agent execution failed: {str(e)}"}
-        ]
+        import traceback
+        logger.error(f"Agent streaming failed:\n{traceback.format_exc()}")
+        yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"

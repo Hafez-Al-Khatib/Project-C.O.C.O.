@@ -389,7 +389,7 @@ def clean_labor_hours():
 # 5. rep_s_00435_SMRY — Average Sales by Menu
 # ---------------------------------------------------------------------------
 def clean_avg_sales():
-    """Parse rep_s_00435_SMRY.csv."""
+    """Parse rep_s_00435_SMRY.csv into item-level average sales."""
     filepath = os.path.join(DATA_DIR, "rep_s_00435_SMRY.csv")
     rows = []
     with open(filepath, "r", encoding="utf-8-sig") as f:
@@ -399,16 +399,26 @@ def clean_avg_sales():
                 continue
             if line_stripped.startswith("REP_S_") or line_stripped.startswith("rep_s_"):
                 continue
+            # Skip header row if present
+            if "Item" in line_stripped and "Avg" in line_stripped:
+                continue
             parts = line.split(",")
-            if len(parts) >= 2:
-                rows.append(parts)
+            if len(parts) >= 3:
+                item_name = parts[0].strip().strip('"')
+                avg_price = parse_number(parts[1]) if len(parts) > 1 else 0.0
+                total_qty = parse_number(parts[2]) if len(parts) > 2 else 0.0
+                if item_name:
+                    rows.append({
+                        "item": item_name,
+                        "avg_price": avg_price,
+                        "total_quantity": total_qty
+                    })
 
-    # Simple pass-through for this smaller file
     if rows:
         df = pd.DataFrame(rows)
         outpath = os.path.join(OUT_DIR, "avg_sales_menu.parquet")
         df.to_parquet(outpath, index=False)
-        print(f"[✓] Avg sales menu: {len(df)} rows → {outpath}")
+        print(f"[✓] Avg sales menu: {len(df)} rows, {df['item'].nunique()} items → {outpath}")
         return df
     return pd.DataFrame()
 

@@ -24,8 +24,12 @@
 		"vite": "^7.3.1"
 	},
 	"dependencies": {
+		"@types/dompurify": "^3.0.5",
+		"@types/marked": "^5.0.2",
 		"chart.js": "^4.5.1",
+		"dompurify": "^3.3.1",
 		"lucide-svelte": "^0.575.0",
+		"marked": "^17.0.3",
 		"svelte-chartjs": "^3.1.5"
 	}
 }
